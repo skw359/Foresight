@@ -1,0 +1,33 @@
+# Foresight — standalone Caddy reverse proxy for LiveKit.
+# Runs ON the LiveKit host, NOT on a separate proxy. Terminates TLS for
+# livekit.example.com and forwards the signaling WebSocket to LiveKit on
+# localhost. Single binary, no nginx.
+#
+#   caddy run --config ./Caddyfile      # foreground test (auto-fetches a cert)
+#   see TLS-SETUP.md for: DNS, running as a service, and the DNS-01 cert path
+#
+# Requires: livekit.example.com DNS resolves to THIS machine, reachable on :443.
+# Only signaling rides this proxy; WebRTC media stays direct on
+# UDP 50000-50100 / TCP 7881 (already DTLS-encrypted) — keep those reachable.
+
+livekit.example.com {
+	reverse_proxy 127.0.0.1:7880
+}
+
+# ---------------------------------------------------------------------------
+# ALTERNATIVE — use this block INSTEAD of the one above if this machine is NOT
+# reachable from the internet on ports 80/443 (LAN-only, or sitting behind
+# another proxy). The normal HTTP/TLS-ALPN challenge can't run in that case, so prove
+# domain control over DNS instead (no inbound ports needed). Example shown for
+# Cloudflare; swap the provider for yours.
+#
+# livekit.example.com {
+# 	tls {
+# 		dns cloudflare {env.CF_API_TOKEN}
+# 	}
+# 	reverse_proxy 127.0.0.1:7880
+# }
+#
+# DNS-01 needs a Caddy build that bundles your provider's plugin:
+#   xcaddy build --with github.com/caddy-dns/cloudflare
+# and the API token exported as CF_API_TOKEN (or your provider's equivalent).

@@ -1,0 +1,30 @@
+{
+  "name": "@foresight/recorder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Foresight Security 24/7 recorder — joins each Home's LiveKit room as a hidden subscriber and writes per-camera HLS segments via a bundled ffmpeg.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@foresight/contract": "*",
+    "@livekit/rtc-ffi-bindings": "0.12.60",
+    "@livekit/rtc-node": "^0.13.29",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "livekit-server-sdk": "^2.15.4",
+    "sodium-native": "^5.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

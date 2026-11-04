@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+# Bundled static ffmpeg/ffprobe (large, platform-specific — never committed).
+bin/ffmpeg
+bin/ffmpeg.exe
+bin/ffprobe
+bin/ffprobe.exe
+recordings
+*.log

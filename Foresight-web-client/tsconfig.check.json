@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@foresight/contract": ["../shared/ts/dist/index.d.ts"] }
+  }
+}

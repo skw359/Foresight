@@ -1,0 +1,38 @@
+{
+  "description": "Foresight E2EE M0 cross-platform parity vector. Every platform (libsodium-wrappers-sumo, sodium-native, swift-sodium) must derive the SAME vaultKey from `password`+`kdf`, open `wrap.wrappedPrivateKeyB64` to `identity.privateKeyB64`, open `sealedHmkB64` to `hmkB64`, and apply the HMK to LiveKit as the STRING `livekitSetKeyString` at key index 0. `livekit.derivedAesKeyB64` is what livekit-client@2.19.2 derives internally from that string (PBKDF2-SHA-256) — assert it where a PBKDF2 implementation is available.",
+  "generatedBy": "shared/ts/scripts/generate-e2ee-vector.mjs",
+  "password": "correct horse battery staple — foresight M0",
+  "kdf": {
+    "algo": "argon2id",
+    "opslimit": 3,
+    "memlimit": 67108864,
+    "saltB64": "wfkgIOHuV4vUeKvR9g4Pqw=="
+  },
+  "vaultKeyB64": "S2JpU9Z88Dh0G7UxArcyHg5L+0ijpF+rc+MDRO+kTuY=",
+  "identity": {
+    "seedB64": "iESHuCb2y9JdZHe4KIHhg7noTjLsrMhJEIfriK+a1qg=",
+    "publicKeyB64": "BnTzuuX2LXGptq6HuBIDNiGi+gUroXCOiXeSwLd8yAg=",
+    "privateKeyB64": "HxiL9OB2G3kVAJb4rbKwM2+e1OcJ4tZTzF7KzoaMoA0="
+  },
+  "wrap": {
+    "nonceB64": "kSGjM3kcsDev6pYpvPB1DxGW/AYFyhXR",
+    "wrappedPrivateKeyB64": "TZTA2fVfqzJHLns1ME/tepnhW91CcDuvcejWdHyzp01Lx+1V+e+4hZWSCRaVXeZg"
+  },
+  "hmkB64": "pD+rpYrZqguuD2s4wCCNQt8EdvRqByCLa0jwD+/bbqE=",
+  "livekitSetKeyString": "pD+rpYrZqguuD2s4wCCNQt8EdvRqByCLa0jwD+/bbqE=",
+  "sealedHmkB64": "WxXa71hPfQcjlJejQgHgfxJPnXKRr2crNAOg9gKXyjxQUDk5biabNjSwZEt3FSTAepLKDHa/TVG8A7ZFhuuu4r9vVPZD9hXlHYDogbvB/zA=",
+  "livekit": {
+    "keySize": 128,
+    "encryptionType": "gcm",
+    "ratchetSalt": "LKFrameEncryptionKey",
+    "ratchetWindowSize": 0,
+    "keyIndex": 0,
+    "pbkdf2Iterations": 100000,
+    "derivedAesKeyB64": "mTFOsRXsbCGNC9R5H7RYKg=="
+  },
+  "aesGcmSample": {
+    "ivB64": "ucfna/ANkumh/MvV",
+    "plaintextUtf8": "foresight E2EE M0 parity frame",
+    "ciphertextWithTagB64": "gWciayucjbAGTWwQG1Bt+Wh7YKafMzm6S9pv0fknsB6GLzhpPt1sJg4hqDm37Q=="
+  }
+}

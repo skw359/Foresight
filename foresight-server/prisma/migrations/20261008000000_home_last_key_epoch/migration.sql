@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Home" ADD COLUMN "lastKeyEpoch" INTEGER NOT NULL DEFAULT 0;

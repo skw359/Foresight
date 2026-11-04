@@ -1,0 +1,35 @@
+{
+  "name": "@foresight/web-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Foresight Security web desktop dashboard — pair, view (grid/full-screen), and control cameras.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@foresight/contract": "*",
+    "@livekit/components-react": "^2.9.21",
+    "@livekit/components-styles": "^1.2.0",
+    "hls.js": "^1.6.0",
+    "livekit-client": "^2.19.2",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.0",
+    "libsodium-wrappers-sumo": "^0.7.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
+    "vitest": "^4.1.9"
+  }
+}

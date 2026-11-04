@@ -1,0 +1,152 @@
+// Foresight Security — data model (SQLite for dev).
+// See shared/PROTOCOL.md for the contract these tables back.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// A person who can log in. `identifier` is email OR username (their choice).
+model User {
+  id           String   @id @default(cuid())
+  identifier   String   @unique
+  passwordHash String
+  /// Optional display first name, shown in greetings; editable in Settings.
+  firstName    String?
+  createdAt    DateTime @default(now())
+
+  // --- E2EE identity vault (opaque to the server; see E2EE_MODEL_B_PLAN.md §4).
+  // The server stores these base64 blobs verbatim and never decrypts them.
+  /// b64 X25519 public key (null until the user sets up keys).
+  publicKey         String?
+  /// b64 crypto_secretbox(privateKey) — 48 B, wrapped under Argon2id(password).
+  wrappedPrivateKey String?
+  /// b64 24 B secretbox nonce.
+  keyNonce          String?
+  /// { algo:"argon2id", opslimit, memlimit, saltB64 } — KDF params stored per-blob.
+  keyKdf            Json?
+
+  memberships    HomeMember[]
+  pairingSessions PairingSession[]
+}
+
+/// A group of cameras. One LiveKit room per Home (`home:<id>`).
+model Home {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  /// Current Home Media Key epoch; 0 = no HMK yet (E2EE not activated).
+  keyEpoch Int @default(0)
+
+  /// The epoch in force when E2EE was last turned off (0 = never). Re-activation
+  /// continues from here, so epochs never repeat: clients cache HMKs per epoch,
+  /// and a reused number would serve a stale key.
+  lastKeyEpoch Int @default(0)
+
+  members         HomeMember[]
+  cameras         Camera[]
+  pairingSessions PairingSession[]
+  homeKeys        HomeKey[]
+}
+
+/// Join table: which users belong to which Homes, and their role.
+model HomeMember {
+  userId String
+  homeId String
+  role   String // "owner" | "member"
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, homeId])
+  @@unique([userId, homeId])
+}
+
+/// A paired iPhone publishing into a Home's room.
+model Camera {
+  id               String    @id @default(cuid())
+  homeId           String
+  name             String
+  deviceSecretHash String
+  online           Boolean   @default(false)
+  /// When true, the recorder captures this camera 24/7 while it is online.
+  recordingEnabled Boolean   @default(false)
+  battery          Float?
+  charging         Boolean?
+  wifi             Json?
+  thermal          String?
+  lastSeen         DateTime?
+  capabilities     Json?
+  /// b64 X25519 public key, registered at /pair/claim or via /cameras/:id/pubkey.
+  publicKey        String?
+  createdAt        DateTime  @default(now())
+
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId])
+}
+
+/// Server-wide key/value settings, editable at runtime from the dashboard.
+/// Example: key "pairing.serverUrl" overrides the base URL embedded into QR
+/// pairing tickets (so it can be the host's LAN IP instead of localhost).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// One-time QR pairing handshake. Token authorizes `POST /pair/claim`.
+model PairingSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  homeId    String
+  createdBy String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  home    Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([homeId])
+}
+
+/// Sealed copies of a Home's Media Key — one row per holder per epoch.
+/// The server stores ONLY sealed bytes, never the HMK. A row with
+/// holderType='recorder' at Home.keyEpoch == recorder consent is active.
+///
+/// `holderId` is POLYMORPHIC (user id / camera id / RecorderIdentity id) and has
+/// NO foreign key, so nothing cascades from those rows. The Home relation DOES
+/// cascade (deleting a Home removes its keys). Holder cleanup on member removal,
+/// camera deletion, account deletion, and recorder-consent revoke is explicit —
+/// see E2EE_MODEL_B_PLAN.md §4.
+model HomeKey {
+  id         String   @id @default(cuid())
+  homeId     String
+  epoch      Int
+  holderType String // "user" | "camera" | "recorder"
+  holderId   String
+  sealedKey  String // b64 crypto_box_seal(HMK) — 80 B
+  /// userId of the session that uploaded this sealed copy (via /key, /key/init,
+  /// /key/rotate, or /recorder-consent) — §10.5 audit trail. Null for rows written
+  /// before this column existed. No FK: the uploader account may be deleted later.
+  sealedBy   String?
+  createdAt  DateTime @default(now())
+
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, epoch, holderType, holderId])
+  @@index([homeId, epoch])
+}
+
+/// Single global recorder identity (one recorder process serves all Homes).
+/// The private key lives ONLY on the recorder host; the server keeps the pubkey.
+model RecorderIdentity {
+  id        String   @id @default(cuid())
+  publicKey String
+  createdAt DateTime @default(now())
+}

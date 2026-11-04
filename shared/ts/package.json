@@ -1,0 +1,30 @@
+{
+  "name": "@foresight/contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared REST + realtime protocol contract for Foresight Security (backend + web).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3"
+  }
+}

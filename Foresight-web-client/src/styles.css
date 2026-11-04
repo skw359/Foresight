@@ -1,0 +1,2040 @@
+/* Foresight Security — light dashboard theme.
+ *
+ * Palette:  #f4f4f6  page canvas
+ *           #ffffff  elevated cards / surfaces (added for contrast)
+ *           #e7e7e7  secondary buttons, inputs, chips
+ *           #d2d2d4  borders
+ *           #ff634a  coral — primary / active accent
+ *           #1d1d1f  near-black text (added for contrast)
+ *
+ * Interaction model: press-heavy. The ONLY hover effect anywhere is a slight
+ * darken (a black overlay) that deepens further on :active — nothing lifts,
+ * glows, recolors, or underlines. Every interactive surface uses the same
+ * overlay so the whole UI feels consistently "pressable".
+ */
+
+:root {
+  /* light neutral surfaces, page → elevated */
+  --bg: #f4f4f6;
+  --surface: #ffffff;
+  --surface-2: #e7e7e7;
+  --surface-3: #ffffff;
+  --video-bg: #18181b;
+
+  --border: #d2d2d4;
+  --border-strong: #bcbcc0;
+
+  /* text — dark for strong contrast on the light surfaces */
+  --text: #1d1d1f;
+  --text-dim: #5c5c63;
+  --text-faint: #8a8a90;
+
+  /* brand accent (coral) — white text sits on it */
+  --accent: #ff634a;
+  --accent-press: #e5482f;
+  --on-accent: #ffffff;
+
+  /* navigation loading bar — a distinct glowing orange, not the coral brand */
+  --nav-progress: #ff7a18;
+
+  /* status (kept deliberately minimal: one green, one amber, one red) */
+  --success: #1f9d57;
+  --warn: #c77a00;
+  --danger: #e0392b;
+  --danger-soft: rgba(224, 57, 43, 0.12);
+
+  /* press overlays — applied on top of any base color. The *-overlay pair is
+     the flat fill used by the ::after press layers; on dark surfaces these flip
+     to a light tint (see the dark theme block) so "darken on press" still reads. */
+  --press-hover: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08));
+  --press-active: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18));
+  --press-hover-overlay: rgba(0, 0, 0, 0.08);
+  --press-active-overlay: rgba(0, 0, 0, 0.18);
+
+  --radius: 12px;
+  --radius-pill: 999px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  --ease: 0.14s ease;
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------- dark theme
+ *
+ * System-wide dark palette, opted into from Settings. The ThemeProvider writes
+ * data-theme="dark" onto <html> (see api/theme.ts), and because every component
+ * paints from the tokens above, redefining them here repaints the whole app at
+ * once — no per-component changes needed.
+ *
+ * Colors are lifted from the sign-in screen's self-contained dark palette (the
+ * `.login-screen` --lp-* tokens) so the logged-in app matches the auth screen:
+ *
+ *   #050506  page canvas        (lp-bg-body)
+ *   #0d0d0f  elevated surfaces  (lp-bg-card)
+ *   #1a1a1c  inputs / chips      (lp-bg-input)
+ *   #2a2a2d  borders             (lp-border)
+ *   #ff634a  coral accent        (unchanged across themes)
+ *
+ * `:root[data-theme="dark"]` outranks `:root` on specificity, so it wins
+ * regardless of source order. Light remains the default when the attribute is
+ * absent.
+ */
+:root[data-theme="dark"] {
+  --bg: #050506;
+  --surface: #0d0d0f;
+  --surface-2: #1a1a1c;
+  --surface-3: #141416;
+  --video-bg: #000000;
+
+  --border: #2a2a2d;
+  --border-strong: #3a3a3e;
+
+  /* text — light for strong contrast on the dark surfaces */
+  --text: #f4f4f6;
+  --text-dim: #9a9aa2;
+  --text-faint: #6e6e76;
+
+  /* brand accent (coral) — identical to light so the brand stays constant */
+  --accent: #ff634a;
+  --accent-press: #e5482f;
+  --on-accent: #ffffff;
+
+  /* loading bar — nudged brighter so the glow reads on the near-black canvas */
+  --nav-progress: #ff8a2b;
+
+  /* status — nudged brighter so they read against the near-black canvas */
+  --success: #34c46f;
+  --warn: #e0972a;
+  --danger: #f0564a;
+  --danger-soft: rgba(240, 86, 74, 0.16);
+
+  /* on dark surfaces the press feedback lightens instead of darkening */
+  --press-hover: linear-gradient(
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.08)
+  );
+  --press-active: linear-gradient(
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.16)
+  );
+  --press-hover-overlay: rgba(255, 255, 255, 0.08);
+  --press-active-overlay: rgba(255, 255, 255, 0.16);
+
+  --shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+/* A few elements hardcode dark-on-light text for soft status fills; in dark
+ * mode those need light ink instead (the QR frame deliberately stays white so
+ * codes remain scannable). */
+:root[data-theme="dark"] .cmd-toast.err {
+  color: #fff;
+}
+:root[data-theme="dark"] .notice-box {
+  color: #e8b765;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--ease);
+}
+a:hover {
+  color: var(--accent-press); /* darken — no underline */
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+}
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+/* shared inline icon sizing */
+.icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.18em;
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 30px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  font-size: 18px;
+  color: inherit;
+}
+.topbar .brand:hover {
+  color: inherit;
+}
+
+.topbar .brand .mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Logo image fills the brand marks (topbar + login); the mark's rounded
+   box does the cornering, its accent background is the loading fallback. */
+.mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.topbar .who {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding-right: 4px;
+}
+
+/* ----------------------------------------------- top navigation progress bar
+ *
+ * A glowing orange strip pinned to the bottom edge of the (sticky) TopBar,
+ * shown while a page loads on navigation. The fill (transform: scaleX) +
+ * opacity are animated from JS (see components/NavProgress + context/
+ * navProgress); only the static look lives here. Absolutely positioned, so it
+ * never affects header layout, and non-interactive. The bar sits idle at
+ * opacity 0 — start() reveals it — so the box-shadow glow can't leak as a line
+ * while collapsed to scaleX(0).
+ */
+.nav-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  pointer-events: none;
+  z-index: 1;
+}
+.nav-progress-bar {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  background: var(--nav-progress);
+  transform-origin: left;
+  transform: scaleX(0);
+  box-shadow: 0 0 10px var(--nav-progress);
+}
+
+/* faded, navigation-driven page body (the header above is exempt) */
+.route-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.nav-fade.in {
+  animation: routeIn 0.25s ease both;
+}
+.nav-fade.out {
+  animation: routeOut 0.25s ease both;
+}
+@keyframes routeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes routeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 44px 30px 88px;
+}
+
+.page.wide {
+  max-width: 1520px;
+}
+
+/* Used by pages that portal their breadcrumb above the animated .page div */
+.breadcrumb-rail {
+  width: 100%;
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 44px 30px 0;
+}
+
+.page.no-top {
+  padding-top: 0;
+}
+
+/* ---------------------------------------------------------------- auth
+ *
+ * The sign-in / register screen replicates Journey's dark, two-panel split
+ * card, recolored to Foresight's coral accent. It is intentionally
+ * self-contained: a local dark palette is declared on `.login-screen` so none
+ * of the global light-theme tokens leak in, and every input / button / error
+ * rule is scoped under `.login-screen` so the rest of the (light) app is left
+ * untouched. The TopBar is hidden on the auth routes (see App.tsx), so this
+ * panel owns the whole viewport.
+ *
+ * Left  ("visual-side") — animated coral line-graph (VisualCanvas) over a
+ *                         layered gradient, with a headline + footer.
+ * Right ("form-side")   — logo, heading, placeholder inputs, primary button.
+ */
+
+.login-screen {
+  --lp-primary: #ff634a;
+  --lp-primary-hover: #e5482f;
+  --lp-bg-body: #050506;
+  --lp-bg-card: #0d0d0f;
+  --lp-bg-input: #1a1a1c;
+  --lp-text-main: #ffffff;
+  --lp-text-muted: #8a8a90;
+  --lp-border: #2a2a2d;
+
+  flex: 1;
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--lp-bg-body);
+  color: var(--lp-text-main);
+  padding: 24px;
+  font-family: inherit;
+}
+
+.login-screen .login-wrapper {
+  background-color: var(--lp-bg-card);
+  width: 100%;
+  max-width: 1000px;
+  min-height: 600px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 24px;
+  border: 1px solid var(--lp-border);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.login-screen .visual-side {
+  background:
+    linear-gradient(135deg, rgba(0, 0, 0, 0.82), rgba(255, 99, 74, 0.18)),
+    radial-gradient(circle at 15% 15%, rgba(255, 99, 74, 0.28), transparent 42%),
+    radial-gradient(
+      circle at 80% 80%,
+      rgba(255, 255, 255, 0.06),
+      transparent 50%
+    ),
+    linear-gradient(155deg, #0d0d0f 0%, #161616 56%, #0a0a0a 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 60px;
+  color: #fff;
+  position: relative;
+  border-right: 1px solid var(--lp-border);
+}
+
+.login-screen .visual-content,
+.login-screen .visual-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.login-screen .visual-content h2 {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1.18;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.login-screen .highlight {
+  color: var(--lp-primary);
+}
+
+.login-screen .visual-footer {
+  opacity: 0.5;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.login-screen .visual-footer p {
+  margin: 0;
+}
+
+.login-screen .form-side {
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--lp-bg-card);
+}
+
+.login-screen .logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+  color: var(--lp-text-main);
+  margin-bottom: 40px;
+}
+
+.login-screen .logo .mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--lp-primary);
+  color: #fff;
+}
+
+.login-screen .header-text h1 {
+  margin: 0 0 8px;
+  font-size: 1.8rem;
+  color: var(--lp-text-main);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.login-screen .header-text p {
+  margin: 0 0 36px;
+  color: var(--lp-text-muted);
+  font-size: 0.95rem;
+}
+
+.login-screen .login-form {
+  display: block;
+}
+
+.login-screen .input-group {
+  margin-bottom: 20px;
+}
+
+.login-screen .input-group input {
+  width: 100%;
+  padding: 15px 16px;
+  background-color: var(--lp-bg-input);
+  border: 1px solid var(--lp-border);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  outline: none;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+  color: var(--lp-text-main);
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.login-screen .input-group input:focus {
+  border-color: var(--lp-primary);
+  box-shadow: 0 0 0 1px var(--lp-primary);
+}
+
+.login-screen .input-group input::placeholder {
+  color: #5a5a5f;
+  font-weight: 400;
+}
+
+.login-screen .input-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* "Keep me unlocked on this device" opt-in (E2EE device key cache). Scoped
+   because the login screen runs its own dark --lp-* palette, so the global
+   .ctrl-toggle-row (theme-token) colors would be illegible here. */
+.login-screen .keep-unlocked {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.login-screen .keep-unlocked input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--lp-primary);
+  cursor: pointer;
+}
+
+.login-screen .keep-unlocked input[type="checkbox"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-screen .keep-unlocked-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--lp-text-main);
+}
+
+.login-screen .keep-unlocked-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--lp-text-muted);
+}
+
+.login-screen .actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.login-screen .forgot-pass {
+  color: var(--lp-text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.18s;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.login-screen .forgot-pass:hover:not(:disabled) {
+  color: var(--lp-primary);
+}
+
+.login-screen .forgot-pass:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-screen .btn-primary {
+  width: 100%;
+  padding: 15px;
+  background-color: var(--lp-primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition:
+    background-color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.login-screen .btn-primary:hover:not(:disabled) {
+  background-color: var(--lp-primary-hover);
+}
+
+.login-screen .btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-screen .btn-primary .spinner {
+  width: 17px;
+  height: 17px;
+  border: 2.5px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+}
+
+.login-screen .signup-link {
+  text-align: center;
+  margin: 24px 0 0;
+  color: var(--lp-text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.login-screen .signup-link a {
+  color: var(--lp-primary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 5px;
+}
+
+.login-screen .signup-link a:hover {
+  color: var(--lp-primary);
+  text-decoration: underline;
+}
+
+.login-screen .error-box {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(224, 57, 43, 0.14);
+  border: 1px solid rgba(224, 57, 43, 0.45);
+  color: #ff9b90;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+@media (max-width: 850px) {
+  .login-screen {
+    padding: 20px;
+  }
+  .login-screen .login-wrapper {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    max-width: 460px;
+  }
+  .login-screen .visual-side {
+    display: none;
+  }
+  .login-screen .form-side {
+    padding: 44px 40px;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-screen {
+    padding: 14px;
+  }
+  .login-screen .login-wrapper {
+    border-radius: 18px;
+  }
+  .login-screen .form-side {
+    padding: 30px 22px;
+  }
+  .login-screen .logo {
+    margin-bottom: 28px;
+    font-size: 1.25rem;
+  }
+  .login-screen .header-text h1 {
+    font-size: 1.45rem;
+  }
+  .login-screen .visual-content h2 {
+    font-size: 2.2rem;
+  }
+}
+
+/* ---------------------------------------------------------------- forms */
+
+.field {
+  margin-bottom: 18px;
+}
+
+.field label,
+.field > span {
+  display: block;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-weight: 560;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 14.5px;
+  outline: none;
+  transition: border-color var(--ease);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+input::placeholder {
+  color: var(--text-faint);
+}
+
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+code {
+  font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-2);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 11px 18px;
+  cursor: pointer;
+  font-weight: 580;
+  user-select: none;
+  white-space: nowrap;
+  position: relative;
+  transition:
+    background-color var(--ease),
+    box-shadow var(--ease),
+    opacity var(--ease);
+}
+
+/* the one and only hover effect: darken. deeper on press. */
+.btn:not(.danger):not(.ghost)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--press-hover-overlay);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.btn:not(.danger):not(.ghost):hover:not(:disabled)::after {
+  opacity: 1;
+}
+.btn:not(.danger):not(.ghost):active:not(:disabled)::after {
+  background: var(--press-active-overlay);
+  opacity: 1;
+}
+.btn:active:not(:disabled) {
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 680;
+}
+
+/* Square, icon-only button (e.g. the Home delete action in the header). */
+.btn.icon-only {
+  padding: 11px;
+  gap: 0;
+  aspect-ratio: 1;
+}
+
+.btn.danger {
+  background-color: transparent;
+  border-color: var(--border-strong);
+  color: var(--danger);
+}
+.btn.danger:hover:not(:disabled) {
+  background-color: var(--danger-soft);
+  background-image: none;
+}
+.btn.danger:active:not(:disabled) {
+  background-color: var(--danger-soft);
+  background-image: var(--press-active);
+}
+
+.btn.ghost {
+  background-color: transparent;
+  border-color: transparent;
+}
+.btn.ghost:hover:not(:disabled) {
+  background-color: var(--surface-2);
+  background-image: none;
+}
+
+.btn.block {
+  width: 100%;
+}
+
+.btn.sm {
+  padding: 8px 13px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+/* on = coral accent. makes every toggle's state unmistakable. */
+.btn.active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 660;
+}
+
+.btn.recording {
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.segmented.block {
+  display: flex;
+  width: 100%;
+}
+.segmented.block button {
+  flex: 1;
+  text-align: center;
+}
+.segmented button {
+  border: none;
+  background-color: var(--surface-2);
+  color: var(--text-dim);
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 560;
+  border-right: 1px solid var(--border-strong);
+  position: relative;
+  transition:
+    background-color var(--ease),
+    color var(--ease);
+}
+.segmented button:last-child {
+  border-right: none;
+}
+.segmented button:not(.active)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--press-hover-overlay);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.segmented button:hover:not(.active) {
+  color: var(--text);
+}
+.segmented button:hover:not(.active)::after {
+  opacity: 1;
+}
+.segmented button:active:not(.active)::after {
+  background: var(--press-active-overlay);
+  opacity: 1;
+}
+.segmented button.active {
+  background-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 660;
+}
+
+/* ------------------------------------------------------- settings page tabs
+ *
+ * Section switcher for the Home Settings page (General | Security). Follows
+ * the press-heavy interaction model: hover/press is the same darken overlay
+ * as everywhere else (::before), and the ONLY active marker is a coral rail
+ * sitting on the divider (::after) — nothing lifts or glows.
+ */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 26px;
+}
+.tabs button {
+  appearance: none;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--text-dim);
+  padding: 10px 14px;
+  cursor: pointer;
+  position: relative;
+  border-radius: var(--radius) var(--radius) 0 0;
+  transition: color var(--ease);
+}
+.tabs button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--press-hover-overlay);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.tabs button:hover:not(.active) {
+  color: var(--text);
+}
+.tabs button:hover:not(.active)::before {
+  opacity: 1;
+}
+.tabs button:active:not(.active)::before {
+  background: var(--press-active-overlay);
+  opacity: 1;
+}
+.tabs button.active {
+  color: var(--text);
+  font-weight: 660;
+}
+.tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* Settings page content column — keep forms/lists at a comfortable reading
+   width even though the page canvas is wider. */
+.settings-body {
+  max-width: 760px;
+}
+
+/* ---------------------------------------------------------------- misc */
+
+.error-box {
+  background: #d90000;
+  color: #ffffff;
+  border-radius: var(--radius);
+  padding: 12px 15px;
+  font-size: 13.5px;
+  margin-bottom: 18px;
+}
+
+.notice-box {
+  background: rgba(199, 122, 0, 0.1);
+  border: 1px solid rgba(199, 122, 0, 0.45);
+  color: #6b4200;
+  border-radius: var(--radius);
+  padding: 12px 15px;
+  font-size: 13px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notice-box.danger {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Settings → Account danger zone, and the per-Home resolve list shown when
+   account deletion is blocked by sole-owned shared Homes. */
+.danger-zone {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--danger-soft);
+}
+
+.blocking-homes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.blocking-home {
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.blocking-home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.blocking-home-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.blocking-home-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.muted {
+  color: var(--text-dim);
+}
+.faint {
+  color: var(--text-faint);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.section-head h1 {
+  font-size: 27px;
+}
+.section-head h2 {
+  font-size: 20px;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.breadcrumb a {
+  color: var(--text-dim);
+}
+.breadcrumb a:hover {
+  color: var(--text);
+}
+.breadcrumb .sep {
+  color: var(--text-faint);
+}
+
+.empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 60px 28px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.empty p {
+  margin: 0 0 8px;
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.btn .spinner {
+  border-color: rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.center-load {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 16px;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------- home cards */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+}
+.home-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color var(--ease);
+}
+.home-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--press-hover);
+  opacity: 0;
+  transition: opacity var(--ease);
+  pointer-events: none;
+}
+.home-card:hover::after {
+  opacity: 1;
+}
+.home-card:active::after {
+  background: var(--press-active);
+  opacity: 1;
+}
+.home-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 17px;
+}
+.e2ee-shield {
+  flex-shrink: 0;
+  color: var(--success);
+}
+.e2ee-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  font-weight: 620;
+}
+
+/* Hover/focus info tooltip: a "?" trigger with a bubble that opens below it,
+   extending right so it stays inside a left-aligned panel. */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+}
+.info-tip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-faint);
+  cursor: help;
+}
+.info-tip-trigger:hover,
+.info-tip-trigger:focus-visible {
+  color: var(--text);
+}
+.info-tip-bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -6px;
+  z-index: 20;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--ease), visibility var(--ease);
+  pointer-events: none;
+}
+.info-tip:hover .info-tip-bubble,
+.info-tip-trigger:focus-visible + .info-tip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+.role {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+/* ------------------------------------------------------------ camera grid */
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+/* ------------------------------------------------------------ camera tile */
+.tile {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--ease);
+}
+.tile:hover {
+  border-color: var(--border-strong);
+}
+
+.tile .video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--video-bg);
+  overflow: hidden;
+}
+.tile .video-wrap > video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Status dot — green when live, gray when offline. Sits left of the name. */
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+.live-dot.offline {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* Camera name scrim — gradient at the bottom of the tile video */
+.tile-scrim {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px 10px 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  z-index: 2;
+  pointer-events: none;
+}
+.tile-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 620;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* --------------------------------------------------------- video overlays */
+.nofeed-overlay,
+.offline-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--video-bg);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+}
+.offline-overlay {
+  color: rgba(255, 255, 255, 0.5);
+}
+.viewer-pill {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.viewer-pill-inline {
+  position: static;
+  top: auto;
+  right: auto;
+}
+
+/* ------------------------------------------------------- full-screen view */
+.fs-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fs-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--video-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.fs-video-wrap > video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: var(--video-bg);
+}
+.overlay-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 2;
+}
+.overlay-top > * {
+  pointer-events: auto;
+}
+.talk-indicator {
+  position: absolute;
+  left: 50%;
+  bottom: 76px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 3;
+}
+
+/* --------------------------------------------- video controls (hover bar) */
+.video-controls-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 52px 8px 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  opacity: 0;
+  transition: opacity var(--ease);
+  z-index: 3;
+}
+.fs-video-wrap:hover .video-controls-overlay,
+.fs-video-wrap:focus-within .video-controls-overlay {
+  opacity: 1;
+}
+.controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctrl-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+.ctrl-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+.ctrl-icon-btn:active {
+  background: rgba(0, 0, 0, 0.7);
+}
+.ctrl-icon-btn.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.ctrl-icon-btn.recording {
+  background: var(--danger);
+  color: #fff;
+}
+.ctrl-lens-group {
+  display: flex;
+  gap: 4px;
+}
+.ctrl-settings-wrap {
+  position: relative;
+}
+.ctrl-settings-popup {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  min-width: 230px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 6;
+}
+.ctrl-settings-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.ctrl-quality-seg {
+  width: 100%;
+}
+/* Explanatory line under the quality segmented control */
+.ctrl-settings-caption {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+/* Checkbox row with a title + caption (settings panels, quality popup) */
+.ctrl-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  cursor: pointer;
+}
+.ctrl-toggle-row input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.ctrl-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ctrl-toggle-caption {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.range-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.range-val {
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Zoom slider — inline in the controls bar */
+.ctrl-zoom-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  max-width: 160px;
+}
+.ctrl-zoom-inline input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+}
+.ctrl-zoom-val {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ modal */
+
+/* Backdrop — darkens + blurs the page behind the dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.25s ease;
+}
+.modal-backdrop.open {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* Blur the live app shell while a modal is open */
+body.modal-open .app-shell {
+  filter: blur(4px);
+  transition: filter 0.25s ease;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.modal-backdrop.open .modal {
+  opacity: 1;
+}
+.modal.wide {
+  max-width: 640px;
+}
+.modal h2 {
+  margin: 0 0 20px;
+  font-size: 18px;
+  font-weight: 680;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* ------------------------------------------------------------- QR pairing */
+.qr-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 0 4px;
+  min-height: 232px;
+}
+.qr-frame {
+  background: #fff;
+  padding: 16px;
+  border-radius: 14px;
+  line-height: 0;
+  box-shadow: var(--shadow);
+}
+.qr-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.qr-meta code {
+  color: var(--text);
+}
+
+/* ----------------------------------------------------------- generic card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* --------------------------------------------------- health badges (overlay) */
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 620;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+.badge.ok {
+  background: rgba(31, 157, 87, 0.85);
+}
+.badge.warn {
+  background: rgba(199, 122, 0, 0.85);
+}
+.badge.crit {
+  background: rgba(224, 57, 43, 0.85);
+}
+.badge.charging {
+  background: rgba(31, 157, 87, 0.85);
+}
+
+/* Four-bar Wi-Fi strength indicator */
+.wifi-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 13px;
+}
+.wifi-bars i {
+  display: block;
+  width: 3px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.wifi-bars i.on {
+  background: #fff;
+}
+
+/* ------------------------------------- connection status dot (shared) */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-strong);
+}
+.status-dot.connected {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(31, 157, 87, 0.2);
+}
+.status-dot.connecting,
+.status-dot.reconnecting {
+  background: var(--warn);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+.status-dot.disconnected,
+.status-dot.error {
+  background: var(--danger);
+}
+.status-dot.idle {
+  background: var(--border-strong);
+}
+
+/* ------------------------------------------- home presence (HomePage header) */
+/* Shield = E2EE Home, dot = plaintext Home; color tracks the room connection. */
+.home-presence {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.home-presence .status-dot {
+  width: 10px;
+  height: 10px;
+}
+.presence-shield {
+  display: inline-flex;
+  align-items: center;
+  color: var(--border-strong);
+}
+.presence-shield.connected {
+  color: var(--success);
+  filter: drop-shadow(0 0 4px rgba(31, 157, 87, 0.45));
+}
+.presence-shield.connecting,
+.presence-shield.reconnecting {
+  color: var(--warn);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+.presence-shield.disconnected,
+.presence-shield.error {
+  color: var(--danger);
+}
+.presence-shield.attention {
+  color: var(--warn);
+}
+
+/* --------------------------------------------------- command toast */
+.cmd-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 580;
+  box-shadow: var(--shadow);
+  z-index: 200;
+  color: var(--text);
+  white-space: nowrap;
+  animation: toast-in 0.2s ease both;
+  pointer-events: none;
+}
+.cmd-toast.err {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ----------------------------------------------------------- status pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pill.talk {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.pill.rec {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------- dev camera */
+.dev-camera-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+.dev-camera-stage {
+  position: relative;
+  background: var(--video-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+.dev-camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.dev-camera-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.dev-camera-side {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.dev-camera-side h3 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+}
+.kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.kv code {
+  color: var(--text);
+  font-size: 12.5px;
+}
+@media (max-width: 720px) {
+  .dev-camera-live {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------- Recordings */
+.rec-panel {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.rec-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--text-faint);
+}
+.rec-dot.on {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.rec-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.rec-coverage .sep {
+  opacity: 0.5;
+}
+.rec-coverage .muted {
+  font-style: italic;
+}
+.rec-video-wrap {
+  position: relative;
+  width: 100%;
+  background: var(--video-bg);
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+.rec-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: var(--video-bg);
+}
+.rec-error {
+  position: absolute;
+  inset: auto 8px 8px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ------------------------------------------------ Recordings list */
+.rec-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.rec-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.rec-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.rec-item-time {
+  font-weight: 620;
+  font-size: 14px;
+}
+.rec-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.rec-item-meta .sep {
+  opacity: 0.5;
+}
+.rec-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Icon-only delete: muted by default, danger tint on hover. */
+.rec-delete-btn {
+  color: var(--text-dim);
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.rec-delete-btn:hover:not(:disabled) {
+  color: var(--danger);
+  background-color: var(--danger-soft);
+}
+
+/* Single-recording player popup (after clicking "View"). */
+.rec-player-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rec-player-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

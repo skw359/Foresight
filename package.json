@@ -1,0 +1,25 @@
+{
+  "name": "foresight",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Foresight Security — turn unused iPhones into live, remotely-viewable security cameras.",
+  "workspaces": [
+    "shared/ts",
+    "foresight-server",
+    "Foresight-web-client",
+    "foresight-recorder"
+  ],
+  "scripts": {
+    "build:contract": "npm run build -w @foresight/contract",
+    "dev:server": "npm run dev -w @foresight/server",
+    "dev:web": "npm run dev -w @foresight/web-client",
+    "dev:recorder": "npm run dev -w @foresight/recorder",
+    "build:web": "npm run build:contract && npm run build -w @foresight/web-client && npm run build -w @foresight/server",
+    "build:recorder": "npm run build:contract && npm run build -w @foresight/recorder",
+    "start:web": "npm start -w @foresight/server",
+    "start:recorder": "npm start -w @foresight/recorder"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

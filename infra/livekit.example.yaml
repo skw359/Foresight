@@ -1,0 +1,51 @@
+# Foresight Security — LiveKit dev configuration.
+# Copy to infra/livekit.yaml (untracked) and adjust as needed.
+#
+# Run it:
+#   macOS    (brew install livekit):           ./infra/run-local.sh
+#   Windows  (livekit-server.exe on PATH):     .\infra\run-local.ps1
+#   Either, manually:                          livekit-server --config infra/livekit.yaml
+#
+# The simplest alternative needs no config at all: `livekit-server --dev`
+# (it uses the same devkey/secret pair below).
+#
+# The backend mints tokens with the api key/secret listed under `keys`.
+
+port: 7880
+
+# Bind to all interfaces so iPhones on the LAN can reach the server.
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # LAN dev: advertise the host's local IP. Set true (and configure TURN) when
+  # moving to "view from anywhere" / behind NAT.
+  use_external_ip: false
+  # Pin the advertised LAN IP. Without it LiveKit snapshots whatever address the
+  # NIC holds at startup and never re-reads it: after a boot where a stray DHCP
+  # server handed out another address, it kept advertising that dead address, and
+  # browsers (whose mDNS-hidden host candidates leave them dependent on ours)
+  # failed ICE while native clients still connected. Must match the IP your
+  # reverse proxy forwards to.
+  # node_ip: "192.168.1.20"
+
+# Dev API key/secret. MUST match foresight-server's LIVEKIT_API_KEY / _SECRET.
+# Replace before any non-local deployment.
+keys:
+  devkey: secret
+
+# Notify the backend when participants join/leave a room. This is what keeps the
+# server's camera.online / lastSeen accurate (see foresight-server webhooks.ts).
+# - api_key MUST be one of the keys above; LiveKit signs the webhook with it and
+#   the backend verifies the signature with LIVEKIT_API_KEY / LIVEKIT_API_SECRET.
+# - The server is co-located on this host, so delivery is over loopback.
+webhook:
+  api_key: devkey
+  urls:
+    - http://127.0.0.1:3199/webhooks/livekit
+
+logging:
+  level: info

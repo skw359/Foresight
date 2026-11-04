@@ -1,0 +1,609 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1782DEF5A8D768D8266994DC /* ForesightProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FF262C60359B206C1E75C7 /* ForesightProtocol.swift */; };
+		317DBA32A41DB8CF28C2A94C /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0C3A404A4E8D8DBE8795CC91 /* LiveKit */; };
+		3F09EADF00253E78A7963666 /* E2EEParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D435E2EF61CBDAC655634B8C /* E2EEParityTests.swift */; };
+		5075C4040C94A5B75F337CE0 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21EB720A0ED8D7FC7F6E39E /* KeychainStore.swift */; };
+		5168BE9BA2151212919656E5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB378B55885CAE9673C86C24 /* QRScannerView.swift */; };
+		55EA37A65D8ECF7ADC9A418B /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309F48B5199CC19CD8BF2D28 /* PairingStore.swift */; };
+		6ED8456A090CBA001570ED5A /* CameraCapabilityDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B689766636B64F9954CF192 /* CameraCapabilityDetector.swift */; };
+		72232C6108034BBCFC9E2E94 /* CameraModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CC5E8CB28E6D0237CD13D5 /* CameraModeView.swift */; };
+		9CF10126078F059659994BA1 /* Sodium in Frameworks */ = {isa = PBXBuildFile; productRef = 868FE044BB62D36344870AFB /* Sodium */; };
+		AAD926CA89A9F96AC7072E94 /* Sodium in Frameworks */ = {isa = PBXBuildFile; productRef = 3928220ADD408190A475B720 /* Sodium */; };
+		B5B841E01A6F31F203962CCB /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5255E41752620A3F406C1E /* PairingView.swift */; };
+		DBE1AD9169E660F7CD02850B /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9904E6F7556A067FCB68584 /* AppModel.swift */; };
+		DC51A481130C739E7EAD3EE4 /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A9EF62B0F4BDAA547D1A7F /* BackendClient.swift */; };
+		DCC705A7CD60352ACA65B18E /* AlarmPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDF69B4BA8850B0178227614 /* AlarmPlayer.swift */; };
+		E5C25C4D121EF6216C873B5D /* ForesightCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7590A02C904070015DBE9FC /* ForesightCameraApp.swift */; };
+		ECFCD7FC69B52D5D223B7D3E /* CameraController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E6FA2AA1982B5B08A09C2A /* CameraController.swift */; };
+		EF17F5852CFF8A6FD709C5A4 /* CameraKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45235D19BEC24230FEE00406 /* CameraKeyManager.swift */; };
+		EF7359B6B5EEE0989433E98C /* DeviceTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC85D91723497B69217AB61 /* DeviceTelemetry.swift */; };
+		F37FD71D181E3FF9BE3B707B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3377AE84D28B414598AFC79 /* RootView.swift */; };
+		F9011B5BDD285BD471EC8857 /* RealtimeSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD1F334DBA513BDE7240DA2 /* RealtimeSession.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AADF18897C821798C56E6EEE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B68F944A077F93FF968B35D3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1566146D4B39B3462AFEDC04;
+			remoteInfo = ForesightCameraClient;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0EC85D91723497B69217AB61 /* DeviceTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTelemetry.swift; sourceTree = "<group>"; };
+		2741C782113BD358C880A2C8 /* ForesightCameraClient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ForesightCameraClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B5255E41752620A3F406C1E /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		2B689766636B64F9954CF192 /* CameraCapabilityDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCapabilityDetector.swift; sourceTree = "<group>"; };
+		309F48B5199CC19CD8BF2D28 /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
+		45235D19BEC24230FEE00406 /* CameraKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraKeyManager.swift; sourceTree = "<group>"; };
+		51CC5E8CB28E6D0237CD13D5 /* CameraModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModeView.swift; sourceTree = "<group>"; };
+		66CDB3631CC5F0C7711D48C4 /* ForesightCameraClientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ForesightCameraClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		77FF262C60359B206C1E75C7 /* ForesightProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForesightProtocol.swift; sourceTree = "<group>"; };
+		A21EB720A0ED8D7FC7F6E39E /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		B7590A02C904070015DBE9FC /* ForesightCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForesightCameraApp.swift; sourceTree = "<group>"; };
+		BB378B55885CAE9673C86C24 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		C3377AE84D28B414598AFC79 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		CDF69B4BA8850B0178227614 /* AlarmPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmPlayer.swift; sourceTree = "<group>"; };
+		D435E2EF61CBDAC655634B8C /* E2EEParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2EEParityTests.swift; sourceTree = "<group>"; };
+		D6E6FA2AA1982B5B08A09C2A /* CameraController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraController.swift; sourceTree = "<group>"; };
+		D9904E6F7556A067FCB68584 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		F4A9EF62B0F4BDAA547D1A7F /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
+		FBD1F334DBA513BDE7240DA2 /* RealtimeSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeSession.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0B00ABE2046B3692C5A8863A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9CF10126078F059659994BA1 /* Sodium in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A4BA7A4CFBC8FD5136F0CC47 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				317DBA32A41DB8CF28C2A94C /* LiveKit in Frameworks */,
+				AAD926CA89A9F96AC7072E94 /* Sodium in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0387A9BA14BDF58D99E3CF33 = {
+			isa = PBXGroup;
+			children = (
+				B329FD99C55D3084C63E1CB2 /* Sources */,
+				19D3C7C6D160EF7351B98756 /* Tests */,
+				C84899F4A1C3D870003F80B7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		03FE6385C25526B617555CD9 /* Realtime */ = {
+			isa = PBXGroup;
+			children = (
+				CDF69B4BA8850B0178227614 /* AlarmPlayer.swift */,
+				FBD1F334DBA513BDE7240DA2 /* RealtimeSession.swift */,
+			);
+			path = Realtime;
+			sourceTree = "<group>";
+		};
+		19D3C7C6D160EF7351B98756 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				D435E2EF61CBDAC655634B8C /* E2EEParityTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		3E446ABA6FD55B8615678815 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				2B689766636B64F9954CF192 /* CameraCapabilityDetector.swift */,
+				D6E6FA2AA1982B5B08A09C2A /* CameraController.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		6584B527A11B376ED9BC0D24 /* Telemetry */ = {
+			isa = PBXGroup;
+			children = (
+				0EC85D91723497B69217AB61 /* DeviceTelemetry.swift */,
+			);
+			path = Telemetry;
+			sourceTree = "<group>";
+		};
+		7FFA6A9391DAAF6FEC3F31BB /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				F4A9EF62B0F4BDAA547D1A7F /* BackendClient.swift */,
+				A21EB720A0ED8D7FC7F6E39E /* KeychainStore.swift */,
+				309F48B5199CC19CD8BF2D28 /* PairingStore.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		84EA1BA91CC726B0714AF1C1 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				51CC5E8CB28E6D0237CD13D5 /* CameraModeView.swift */,
+				C3377AE84D28B414598AFC79 /* RootView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		8A8A22C94F3CB775EB9DE5F9 /* Crypto */ = {
+			isa = PBXGroup;
+			children = (
+				45235D19BEC24230FEE00406 /* CameraKeyManager.swift */,
+			);
+			path = Crypto;
+			sourceTree = "<group>";
+		};
+		9F9CD48A9DA61636234F0705 /* Protocol */ = {
+			isa = PBXGroup;
+			children = (
+				77FF262C60359B206C1E75C7 /* ForesightProtocol.swift */,
+			);
+			path = Protocol;
+			sourceTree = "<group>";
+		};
+		A7B2EFA378D8846D80142B17 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				D9904E6F7556A067FCB68584 /* AppModel.swift */,
+				B7590A02C904070015DBE9FC /* ForesightCameraApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B329FD99C55D3084C63E1CB2 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A7B2EFA378D8846D80142B17 /* App */,
+				3E446ABA6FD55B8615678815 /* Capture */,
+				8A8A22C94F3CB775EB9DE5F9 /* Crypto */,
+				7FFA6A9391DAAF6FEC3F31BB /* Networking */,
+				DC0599D1F692B789342435E9 /* Pairing */,
+				9F9CD48A9DA61636234F0705 /* Protocol */,
+				03FE6385C25526B617555CD9 /* Realtime */,
+				6584B527A11B376ED9BC0D24 /* Telemetry */,
+				84EA1BA91CC726B0714AF1C1 /* UI */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		C84899F4A1C3D870003F80B7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2741C782113BD358C880A2C8 /* ForesightCameraClient.app */,
+				66CDB3631CC5F0C7711D48C4 /* ForesightCameraClientTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DC0599D1F692B789342435E9 /* Pairing */ = {
+			isa = PBXGroup;
+			children = (
+				2B5255E41752620A3F406C1E /* PairingView.swift */,
+				BB378B55885CAE9673C86C24 /* QRScannerView.swift */,
+			);
+			path = Pairing;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1566146D4B39B3462AFEDC04 /* ForesightCameraClient */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 68403E619ACF8F30F08CD936 /* Build configuration list for PBXNativeTarget "ForesightCameraClient" */;
+			buildPhases = (
+				C006EA36FF1AAFFAA40B29C1 /* Sources */,
+				A4BA7A4CFBC8FD5136F0CC47 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ForesightCameraClient;
+			packageProductDependencies = (
+				0C3A404A4E8D8DBE8795CC91 /* LiveKit */,
+				3928220ADD408190A475B720 /* Sodium */,
+			);
+			productName = ForesightCameraClient;
+			productReference = 2741C782113BD358C880A2C8 /* ForesightCameraClient.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E1877276EF566A21E3B62FB6 /* ForesightCameraClientTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EEF2DE5D23EBBB096F3DF15B /* Build configuration list for PBXNativeTarget "ForesightCameraClientTests" */;
+			buildPhases = (
+				8BBC14752049483447F00D42 /* Sources */,
+				0B00ABE2046B3692C5A8863A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A30F8BE43421C4CB7404CA58 /* PBXTargetDependency */,
+			);
+			name = ForesightCameraClientTests;
+			packageProductDependencies = (
+				868FE044BB62D36344870AFB /* Sodium */,
+			);
+			productName = ForesightCameraClientTests;
+			productReference = 66CDB3631CC5F0C7711D48C4 /* ForesightCameraClientTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B68F944A077F93FF968B35D3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					1566146D4B39B3462AFEDC04 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 718FAAEFD00DEFDF017DF989 /* Build configuration list for PBXProject "ForesightCameraClient" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0387A9BA14BDF58D99E3CF33;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				44D720750A4691FBBCD37F70 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+				771684176EE0C372B44A35B8 /* XCRemoteSwiftPackageReference "swift-sodium" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C84899F4A1C3D870003F80B7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1566146D4B39B3462AFEDC04 /* ForesightCameraClient */,
+				E1877276EF566A21E3B62FB6 /* ForesightCameraClientTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8BBC14752049483447F00D42 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F09EADF00253E78A7963666 /* E2EEParityTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C006EA36FF1AAFFAA40B29C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DCC705A7CD60352ACA65B18E /* AlarmPlayer.swift in Sources */,
+				DBE1AD9169E660F7CD02850B /* AppModel.swift in Sources */,
+				DC51A481130C739E7EAD3EE4 /* BackendClient.swift in Sources */,
+				6ED8456A090CBA001570ED5A /* CameraCapabilityDetector.swift in Sources */,
+				ECFCD7FC69B52D5D223B7D3E /* CameraController.swift in Sources */,
+				EF17F5852CFF8A6FD709C5A4 /* CameraKeyManager.swift in Sources */,
+				72232C6108034BBCFC9E2E94 /* CameraModeView.swift in Sources */,
+				EF7359B6B5EEE0989433E98C /* DeviceTelemetry.swift in Sources */,
+				E5C25C4D121EF6216C873B5D /* ForesightCameraApp.swift in Sources */,
+				1782DEF5A8D768D8266994DC /* ForesightProtocol.swift in Sources */,
+				5075C4040C94A5B75F337CE0 /* KeychainStore.swift in Sources */,
+				55EA37A65D8ECF7ADC9A418B /* PairingStore.swift in Sources */,
+				B5B841E01A6F31F203962CCB /* PairingView.swift in Sources */,
+				5168BE9BA2151212919656E5 /* QRScannerView.swift in Sources */,
+				F9011B5BDD285BD471EC8857 /* RealtimeSession.swift in Sources */,
+				F37FD71D181E3FF9BE3B707B /* RootView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A30F8BE43421C4CB7404CA58 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1566146D4B39B3462AFEDC04 /* ForesightCameraClient */;
+			targetProxy = AADF18897C821798C56E6EEE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4461436F38DA61D6F4D2315D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.foresight.cameraclient.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ForesightCameraClient.app/ForesightCameraClient";
+			};
+			name = Release;
+		};
+		5501A4DAB69E9B55CE95534E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 83XNM4XSJB;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.foresight.cameraclient;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		61E80019C0F9175E15147EEA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 83XNM4XSJB;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.foresight.cameraclient;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		666187FE31AAE4935FCD3818 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.foresight.cameraclient.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ForesightCameraClient.app/ForesightCameraClient";
+			};
+			name = Debug;
+		};
+		912DE0BB37FA9246046C78F0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FD818F2A125C751A60D9A56C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		68403E619ACF8F30F08CD936 /* Build configuration list for PBXNativeTarget "ForesightCameraClient" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5501A4DAB69E9B55CE95534E /* Debug */,
+				61E80019C0F9175E15147EEA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		718FAAEFD00DEFDF017DF989 /* Build configuration list for PBXProject "ForesightCameraClient" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FD818F2A125C751A60D9A56C /* Debug */,
+				912DE0BB37FA9246046C78F0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EEF2DE5D23EBBB096F3DF15B /* Build configuration list for PBXNativeTarget "ForesightCameraClientTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				666187FE31AAE4935FCD3818 /* Debug */,
+				4461436F38DA61D6F4D2315D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		44D720750A4691FBBCD37F70 /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 2.15.0;
+			};
+		};
+		771684176EE0C372B44A35B8 /* XCRemoteSwiftPackageReference "swift-sodium" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jedisct1/swift-sodium";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0C3A404A4E8D8DBE8795CC91 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 44D720750A4691FBBCD37F70 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+		3928220ADD408190A475B720 /* Sodium */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 771684176EE0C372B44A35B8 /* XCRemoteSwiftPackageReference "swift-sodium" */;
+			productName = Sodium;
+		};
+		868FE044BB62D36344870AFB /* Sodium */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 771684176EE0C372B44A35B8 /* XCRemoteSwiftPackageReference "swift-sodium" */;
+			productName = Sodium;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B68F944A077F93FF968B35D3 /* Project object */;
+}

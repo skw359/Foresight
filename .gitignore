@@ -1,0 +1,54 @@
+# OS / editor / sync noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.fuse_hidden*
+*.sync-conflict-*
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+build/
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/xcode/
+coverage/
+
+# Logs
+*.log
+
+# Secrets and machine-local config (the .example templates stay tracked)
+.env
+.env.*
+!.env.example
+*.local
+.claude/
+/infra/livekit.yaml
+/foresight-recorder/data/
+
+# Local app state
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.bak*
+database.json
+database-export.json
+recordings/
+uploads/
+photos/
+
+# Downloaded native binaries
+livekit-server
+
+# Local backup copy
+/foresight-backup/
+/Foresight-ios-backup/
+
+# Local planning docs
+/E2EE_MODEL_B_PLAN.md
+/SERVER_SIDE_RECORDING_PLAN.md
+/VIDEO_STREAMING_ARCHITECTURE.md
