@@ -69,7 +69,11 @@ final class FrameGrabber: NSObject, VideoRenderer, @unchecked Sendable {
         captured = true
         lock.unlock()
         let image = FrameImage.pixelBuffer(from: frame).flatMap(FrameImage.image(from:))
-        finish(image)
+        // Leave WebRTC's frame callback first: removing a renderer from inside it
+        // never returns, which froze the app once the safety timer hit `lock`.
+        DispatchQueue.main.async { [self] in
+            finish(image)
+        }
     }
 
     func render(frame: VideoFrame, captureDevice: AVCaptureDevice?, captureOptions: VideoCaptureOptions?) {
@@ -78,12 +82,13 @@ final class FrameGrabber: NSObject, VideoRenderer, @unchecked Sendable {
 
     private func finish(_ image: UIImage?) {
         lock.lock()
-        let alreadyDone = (track == nil)
-        track?.remove(videoRenderer: self)
-        let t = track
+        let finishing = track
         track = nil
         lock.unlock()
-        if alreadyDone && t == nil { return }
+        guard let finishing else { return }
+        // Outside `lock`: a frame callback in flight may be waiting on it, and this
+        // call waits for that callback to return.
+        finishing.remove(videoRenderer: self)
         onImage(image)
     }
 }
@@ -172,9 +177,9 @@ final class TrackRecorder: NSObject, VideoRenderer, @unchecked Sendable {
         lock.unlock()
     }
 
-    func render(frame: VideoFrame, captureDevice: AVCaptureDevice?, captureOptions: VideoCaptureOptions?) {
-        render(frame: frame)
-    }
+    // Empty on purpose: LiveKit calls both overloads for each frame of a remote track,
+    // and appending the same timestamp twice makes AVAssetWriter fail the whole file.
+    func render(frame: VideoFrame, captureDevice: AVCaptureDevice?, captureOptions: VideoCaptureOptions?) {}
 
     private func setupWriter(width: Int, height: Int) {
         guard width > 0, height > 0,

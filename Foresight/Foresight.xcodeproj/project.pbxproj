@@ -15,6 +15,7 @@
 		21934202AA18350916505E32 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55416CDF3BC2928A8EB8552 /* Keychain.swift */; };
 		286F6F50E779DED30701DDE3 /* QRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D33AA7D509272F96E1809F2 /* QRCode.swift */; };
 		2C19B15E61754B33433DE62E /* Montserrat-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220644066ECA6A8DADDD41AE /* Montserrat-SemiBold.ttf */; };
+		358335E79D9EADE09F2826A4 /* CameraDetailsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E09C8E97C482F8065E98253 /* CameraDetailsSheet.swift */; };
 		422EFBCBF5258139C069F3ED /* Montserrat-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5DD6BA258B321AC776301D7A /* Montserrat-Regular.ttf */; };
 		4A55BFCEB00FC4AE6784AC36 /* LiveCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABC2C50F7244CFC82DB87493 /* LiveCamera.swift */; };
 		4FD284465A108360DF6B1116 /* Sodium in Frameworks */ = {isa = PBXBuildFile; productRef = 5573D752A3CA8BC65DF31D50 /* Sodium */; };
@@ -22,24 +23,27 @@
 		5436979D1A5F6F2824895222 /* ForesightProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729E573F2C2B3EEE8621379 /* ForesightProtocol.swift */; };
 		5ED35317C0D57834C55FFAD3 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138CA6A13257F83CD16D6AC6 /* APIClient.swift */; };
 		668F8F6036A8D6F213E472FE /* ForesightApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A94031F89EACC58EBD05EE /* ForesightApp.swift */; };
+		6ABFAC432A702E5CD1D901F1 /* LiveViewerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC304D630B976BEB79B6A7B /* LiveViewerModel.swift */; };
 		77AFCAD241F3EC503566D3D1 /* CameraVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD27A851F0296A6BE5A196A /* CameraVideoView.swift */; };
+		82760EE26BEE6B9A598E2F41 /* ViewerControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326AFDC87432CE94607AED04 /* ViewerControls.swift */; };
 		82F18A2F0AA9F8E2CB73CA7B /* E2EEParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E337D802998A0CCEE056239C /* E2EEParityTests.swift */; };
 		8B8CD21D5651D4D186FC655B /* PhotoSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E49A723CD3FA317F1223949 /* PhotoSaver.swift */; };
+		8C384288C482A253DCC9C64C /* FullScreenCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CE70F0ED3E2A96EC5A3440D /* FullScreenCameraView.swift */; };
 		8C3E323D7A1BD5BA4710B36B /* HomeGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 701707440A2DF7496CCE5169 /* HomeGridView.swift */; };
 		8C8B6A754D5042AAB1EE49F3 /* RoomManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F630B6E5CAB52439A008E88 /* RoomManager.swift */; };
 		8D8B77108847AC74B7F27BF0 /* IdentityVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5ABBBF64A4DCA18B497BF9 /* IdentityVault.swift */; };
+		9889B4772383D9A11388A9F7 /* GlassChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 807A7DD4C5329D110B40C0F6 /* GlassChrome.swift */; };
+		AA4D48062B2FCF8D488B63A7 /* HomeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184530D47B77DE67FFB890D0 /* HomeRootView.swift */; };
 		B090E290B736E630FA637C81 /* HealthBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E29431ED294B6853E465568 /* HealthBadges.swift */; };
-		C1B9ECE83F6FE59D6C610DB1 /* HomesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7225B46B86DBD107903967BE /* HomesListView.swift */; };
 		C2F8763405BE5C320E5D6A0D /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = D71685830189A5D365AC18C0 /* LiveKit */; };
-		CE12B86C7E96E140D054C3E4 /* FullScreenCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 236A7DAEBD3E4F65C9C6BFBF /* FullScreenCameraView.swift */; };
 		D267165B69F56D1934C2B4F5 /* CameraTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C5028F686601E3F2DC33D8 /* CameraTile.swift */; };
 		D4E4E2CC5C59CEF4A043D83D /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317979A08B417E87A867AACA /* AppConfig.swift */; };
+		D68A131365E7DD3C224BD2AF /* AddCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26194E0941C2EE81DAFCBD8A /* AddCameraView.swift */; };
 		D6D381528EEF37C950EF31FB /* Montserrat-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9B546C0E3EC5464517B43E01 /* Montserrat-Light.ttf */; };
 		D89E3B2156C6192203C8EEE9 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DF54382C5869A26785B930 /* AuthView.swift */; };
 		DAEB94160680BA48E078E438 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4190988867ECEE69EACB51A1 /* SettingsView.swift */; };
 		EAF337FFFE1A36D8922F5B7D /* Montserrat-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6B985D0EDDCD64635ADF1B82 /* Montserrat-Bold.ttf */; };
 		ECB4FAE64AA62DFE2E224BF2 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A3CAA6584DBA4DA717B0BC /* Session.swift */; };
-		EEA2EF768459BD286A190C6D /* AddCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 940CC93AD129E06B490AF21A /* AddCameraView.swift */; };
 		F7814F920A5E3796369D7A04 /* Montserrat-Thin.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C9004B0E27DE7B75A7ED4B3C /* Montserrat-Thin.ttf */; };
 /* End PBXBuildFile section */
 
@@ -47,25 +51,29 @@
 		02C6180D11A910A81B512BAF /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		09DF54382C5869A26785B930 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		138CA6A13257F83CD16D6AC6 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		184530D47B77DE67FFB890D0 /* HomeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRootView.swift; sourceTree = "<group>"; };
 		1E29431ED294B6853E465568 /* HealthBadges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthBadges.swift; sourceTree = "<group>"; };
 		220644066ECA6A8DADDD41AE /* Montserrat-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Montserrat-SemiBold.ttf"; sourceTree = "<group>"; };
-		236A7DAEBD3E4F65C9C6BFBF /* FullScreenCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullScreenCameraView.swift; sourceTree = "<group>"; };
+		26194E0941C2EE81DAFCBD8A /* AddCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddCameraView.swift; sourceTree = "<group>"; };
 		2D5ABBBF64A4DCA18B497BF9 /* IdentityVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityVault.swift; sourceTree = "<group>"; };
 		2F630B6E5CAB52439A008E88 /* RoomManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomManager.swift; sourceTree = "<group>"; };
 		317979A08B417E87A867AACA /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		326AFDC87432CE94607AED04 /* ViewerControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerControls.swift; sourceTree = "<group>"; };
+		3CE70F0ED3E2A96EC5A3440D /* FullScreenCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullScreenCameraView.swift; sourceTree = "<group>"; };
 		4190988867ECEE69EACB51A1 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4C6CC6BCCA3839048FBE9D37 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4E49A723CD3FA317F1223949 /* PhotoSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSaver.swift; sourceTree = "<group>"; };
-		5685A5F92F3E2408A5037702 /* ForesightTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ForesightTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5685A5F92F3E2408A5037702 /* ForesightTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ForesightTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DD6BA258B321AC776301D7A /* Montserrat-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Montserrat-Regular.ttf"; sourceTree = "<group>"; };
-		6337D1B6270E2FE484A0FCAF /* Foresight.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Foresight.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6337D1B6270E2FE484A0FCAF /* Foresight.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Foresight.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6B985D0EDDCD64635ADF1B82 /* Montserrat-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Montserrat-Bold.ttf"; sourceTree = "<group>"; };
+		6FC304D630B976BEB79B6A7B /* LiveViewerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveViewerModel.swift; sourceTree = "<group>"; };
 		701707440A2DF7496CCE5169 /* HomeGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeGridView.swift; sourceTree = "<group>"; };
-		7225B46B86DBD107903967BE /* HomesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomesListView.swift; sourceTree = "<group>"; };
 		728B40A85AF1962862E7EF02 /* FrameCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameCapture.swift; sourceTree = "<group>"; };
 		75A3E6775613479251AAE2E3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7C204A169B19156336B08A34 /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
-		940CC93AD129E06B490AF21A /* AddCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddCameraView.swift; sourceTree = "<group>"; };
+		7E09C8E97C482F8065E98253 /* CameraDetailsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraDetailsSheet.swift; sourceTree = "<group>"; };
+		807A7DD4C5329D110B40C0F6 /* GlassChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassChrome.swift; sourceTree = "<group>"; };
 		9B546C0E3EC5464517B43E01 /* Montserrat-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Montserrat-Light.ttf"; sourceTree = "<group>"; };
 		9D33AA7D509272F96E1809F2 /* QRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCode.swift; sourceTree = "<group>"; };
 		ABC2C50F7244CFC82DB87493 /* LiveCamera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCamera.swift; sourceTree = "<group>"; };
@@ -185,10 +193,18 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		795251C0EA9BFD1B03A0A80A /* Controls */ = {
+			isa = PBXGroup;
+			children = (
+				326AFDC87432CE94607AED04 /* ViewerControls.swift */,
+			);
+			path = Controls;
+			sourceTree = "<group>";
+		};
 		89406E8EE7CB87246BB22436 /* Homes */ = {
 			isa = PBXGroup;
 			children = (
-				7225B46B86DBD107903967BE /* HomesListView.swift */,
+				184530D47B77DE67FFB890D0 /* HomeRootView.swift */,
 			);
 			path = Homes;
 			sourceTree = "<group>";
@@ -198,6 +214,7 @@
 			children = (
 				317979A08B417E87A867AACA /* AppConfig.swift */,
 				728B40A85AF1962862E7EF02 /* FrameCapture.swift */,
+				807A7DD4C5329D110B40C0F6 /* GlassChrome.swift */,
 				1E29431ED294B6853E465568 /* HealthBadges.swift */,
 				4E49A723CD3FA317F1223949 /* PhotoSaver.swift */,
 				9D33AA7D509272F96E1809F2 /* QRCode.swift */,
@@ -225,12 +242,33 @@
 			path = Realtime;
 			sourceTree = "<group>";
 		};
+		AEF98A9423B31F7200D3B02E /* Pairing */ = {
+			isa = PBXGroup;
+			children = (
+				26194E0941C2EE81DAFCBD8A /* AddCameraView.swift */,
+			);
+			path = Pairing;
+			sourceTree = "<group>";
+		};
+		BE3F934FF557AC39106FAA34 /* FullScreen */ = {
+			isa = PBXGroup;
+			children = (
+				7E09C8E97C482F8065E98253 /* CameraDetailsSheet.swift */,
+				3CE70F0ED3E2A96EC5A3440D /* FullScreenCameraView.swift */,
+				6FC304D630B976BEB79B6A7B /* LiveViewerModel.swift */,
+			);
+			path = FullScreen;
+			sourceTree = "<group>";
+		};
 		D9416415EF12A772DB9ACC54 /* Features */ = {
 			isa = PBXGroup;
 			children = (
 				2625ADEAAF950494BB157EAE /* Auth */,
+				795251C0EA9BFD1B03A0A80A /* Controls */,
+				BE3F934FF557AC39106FAA34 /* FullScreen */,
 				ECE01FD71577653E5E721910 /* Grid */,
 				89406E8EE7CB87246BB22436 /* Homes */,
+				AEF98A9423B31F7200D3B02E /* Pairing */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -253,9 +291,7 @@
 		ECE01FD71577653E5E721910 /* Grid */ = {
 			isa = PBXGroup;
 			children = (
-				940CC93AD129E06B490AF21A /* AddCameraView.swift */,
 				F4C5028F686601E3F2DC33D8 /* CameraTile.swift */,
-				236A7DAEBD3E4F65C9C6BFBF /* FullScreenCameraView.swift */,
 				701707440A2DF7496CCE5169 /* HomeGridView.swift */,
 			);
 			path = Grid;
@@ -318,6 +354,7 @@
 						ProvisioningStyle = Automatic;
 					};
 					C3A0172CE188F8399BF7146E = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -369,21 +406,24 @@
 			buildActionMask = 2147483647;
 			files = (
 				5ED35317C0D57834C55FFAD3 /* APIClient.swift in Sources */,
-				EEA2EF768459BD286A190C6D /* AddCameraView.swift in Sources */,
+				D68A131365E7DD3C224BD2AF /* AddCameraView.swift in Sources */,
 				D4E4E2CC5C59CEF4A043D83D /* AppConfig.swift in Sources */,
 				D89E3B2156C6192203C8EEE9 /* AuthView.swift in Sources */,
+				358335E79D9EADE09F2826A4 /* CameraDetailsSheet.swift in Sources */,
 				D267165B69F56D1934C2B4F5 /* CameraTile.swift in Sources */,
 				77AFCAD241F3EC503566D3D1 /* CameraVideoView.swift in Sources */,
 				668F8F6036A8D6F213E472FE /* ForesightApp.swift in Sources */,
 				5436979D1A5F6F2824895222 /* ForesightProtocol.swift in Sources */,
 				048D7E8BBC2F98333E291F71 /* FrameCapture.swift in Sources */,
-				CE12B86C7E96E140D054C3E4 /* FullScreenCameraView.swift in Sources */,
+				8C384288C482A253DCC9C64C /* FullScreenCameraView.swift in Sources */,
+				9889B4772383D9A11388A9F7 /* GlassChrome.swift in Sources */,
 				B090E290B736E630FA637C81 /* HealthBadges.swift in Sources */,
 				8C3E323D7A1BD5BA4710B36B /* HomeGridView.swift in Sources */,
-				C1B9ECE83F6FE59D6C610DB1 /* HomesListView.swift in Sources */,
+				AA4D48062B2FCF8D488B63A7 /* HomeRootView.swift in Sources */,
 				8D8B77108847AC74B7F27BF0 /* IdentityVault.swift in Sources */,
 				21934202AA18350916505E32 /* Keychain.swift in Sources */,
 				4A55BFCEB00FC4AE6784AC36 /* LiveCamera.swift in Sources */,
+				6ABFAC432A702E5CD1D901F1 /* LiveViewerModel.swift in Sources */,
 				8B8CD21D5651D4D186FC655B /* PhotoSaver.swift in Sources */,
 				286F6F50E779DED30701DDE3 /* QRCode.swift in Sources */,
 				8C8B6A754D5042AAB1EE49F3 /* RoomManager.swift in Sources */,
@@ -391,6 +431,7 @@
 				DAEB94160680BA48E078E438 /* SettingsView.swift in Sources */,
 				20743D9D2F693AE1D1DD83A5 /* Theme.swift in Sources */,
 				201FCA824FC23E3A1D907F07 /* UnlockView.swift in Sources */,
+				82760EE26BEE6B9A598E2F41 /* ViewerControls.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -513,7 +554,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -599,7 +640,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

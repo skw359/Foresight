@@ -2,7 +2,7 @@ name: Foresight
 options:
   bundleIdPrefix: com.foresight
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"
   createIntermediateGroups: true
   groupSortPosition: top
 

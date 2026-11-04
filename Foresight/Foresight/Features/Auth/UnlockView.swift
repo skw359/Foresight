@@ -12,6 +12,7 @@ import SwiftUI
 
 struct UnlockView: View {
     @EnvironmentObject private var session: Session
+    @FocusState private var isFocused: Bool
     @State private var password = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
@@ -19,54 +20,60 @@ struct UnlockView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
-                    Image(systemName: "lock.shield")
-                        .font(.system(size: 44))
-                        .foregroundStyle(Theme.accent)
-                        .padding(.top, 24)
-
-                    VStack(spacing: 8) {
+                VStack(spacing: 24) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Theme.accent)
+                            .accessibilityHidden(true)
                         Text("Unlock Encrypted Cameras")
-                            .font(.montserrat(size: 19, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(.title3.weight(.semibold))
+                            .multilineTextAlignment(.center)
                         Text("Enter your password to restore your camera keys on this device. Your video stays end-to-end encrypted.")
-                            .font(.montserrat(size: 14))
-                            .foregroundStyle(Theme.secondaryText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
 
-                    ThemedField(placeholder: "Password", text: $password, isSecure: true)
-                        .textContentType(.password)
-                        .submitLabel(.go)
-                        .onSubmit { submit() }
+                    VStack(spacing: 12) {
+                        InputGroup {
+                            SecureField("Password", text: $password)
+                                .textContentType(.password)
+                                .submitLabel(.go)
+                                .focused($isFocused)
+                                .onSubmit(submit)
+                                .inputRow()
+                        }
 
-                    if let errorMessage {
-                        ErrorBanner(message: errorMessage)
-                    }
+                        if let errorMessage {
+                            InlineError(message: errorMessage)
+                        }
 
-                    PrimaryButton(
-                        title: "Unlock",
-                        isLoading: isSubmitting,
-                        isDisabled: password.isEmpty || isSubmitting
-                    ) {
-                        submit()
+                        PrimaryButton(
+                            title: "Unlock",
+                            isLoading: isSubmitting,
+                            isDisabled: password.isEmpty && !isSubmitting,
+                            action: submit
+                        )
                     }
                 }
-                .padding(24)
+                .frame(maxWidth: 420)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .scrollBounceBehavior(.basedOnSize)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Later") { session.cancelPasswordUnlock() }
-                        .font(.montserrat(size: 15, weight: .medium))
-                        .tint(Theme.secondaryText)
+                        .tint(.primary)
                 }
             }
             .interactiveDismissDisabled(isSubmitting)
+            .onAppear { isFocused = true }
         }
-        .presentationBackground(Theme.background)
+        .presentationDetents([.medium, .large])
     }
 
     private func submit() {

@@ -17,10 +17,17 @@ import LiveKit
 struct CameraVideoView: View {
     @ObservedObject var camera: LiveCamera
     var layoutMode: VideoView.LayoutMode = .fill
+    /// Why the whole Home can't deliver video right now (locked, not connected…).
+    /// Takes precedence over the camera's own state, so a tile never claims to be
+    /// "Connecting…" when it's actually waiting on something else.
+    var roomIssue: String?
+    var backdrop: Color = .black
+    /// Tighter placeholder for small grid tiles.
+    var isCompact: Bool = false
 
     var body: some View {
         ZStack {
-            Color.black
+            backdrop
             if let track = camera.videoTrack {
                 AdaptiveVideoView(track: track, layoutMode: layoutMode)
                 if camera.e2eeDecrypting {
@@ -46,15 +53,37 @@ struct CameraVideoView: View {
         }
     }
 
+    @ViewBuilder
     private var placeholder: some View {
-        VStack(spacing: 10) {
-            Image(systemName: camera.isOnline ? "video.fill" : "video.slash.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(.white.opacity(0.5))
-            Text(camera.isOnline ? "Connecting…" : "Offline")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
+        VStack(spacing: isCompact ? 4 : 8) {
+            if let roomIssue {
+                Image(systemName: "video.badge.ellipsis")
+                    .font(isCompact ? .body : .title3)
+                    .foregroundStyle(.white.opacity(0.5))
+                Text(roomIssue)
+                    .foregroundStyle(.white.opacity(0.7))
+            } else if camera.isOnline {
+                ProgressView()
+                    .tint(.white.opacity(0.7))
+                Text("Connecting…")
+                    .foregroundStyle(.white.opacity(0.7))
+            } else {
+                Image(systemName: "video.slash.fill")
+                    .font(isCompact ? .body : .title3)
+                    .foregroundStyle(.white.opacity(0.5))
+                Text("Offline")
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white.opacity(0.8))
+                if !isCompact, let lastSeen = ForesightDate.parse(camera.info.status.lastSeen) {
+                    Text("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
         }
+        .font(.caption)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 8)
     }
 }
 

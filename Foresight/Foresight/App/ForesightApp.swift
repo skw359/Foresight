@@ -18,7 +18,7 @@ struct ForesightApp: App {
             RootView()
                 .environmentObject(session)
                 .environmentObject(config)
-                .tint(.accentColor)
+                .tint(Theme.accent)
         }
     }
 }
@@ -28,10 +28,10 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            Theme.canvas.ignoresSafeArea()
 
             if session.isAuthenticated {
-                HomesListView()
+                HomeRootView()
                     .transition(.opacity)
             } else {
                 AuthView()
@@ -39,6 +39,9 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.5), value: session.isAuthenticated)
+        // Permanently dark, as the HIG suggests for immersive media apps: the UI
+        // recedes around the footage, and it's easy on the eyes when checking a
+        // camera at night.
         .preferredColorScheme(.dark)
         // Cold-launch E2EE re-unlock, raised from anywhere the identity key is
         // needed but absent and Face ID was unavailable/declined (plan §7.4).

@@ -2,14 +2,256 @@
 //  Theme.swift
 //  Foresight
 //
-//  Design tokens and shared styled components. Pure presentation — no state
-//  or networking. The visual language: pure-black background, coral accent,
-//  Montserrat type, dark hairline-bordered cards, and translucent glass chrome.
+//  Design tokens and the shared content-layer components. Pure presentation —
+//  no state or networking.
+//
+//  The visual language, in four rules:
+//   1. Video is the interface. The canvas is true black so feeds read as windows
+//      and the UI recedes (a permanently dark appearance is what the HIG suggests
+//      for immersive media apps).
+//   2. Coral means "act". It marks the primary action on a screen and Talk — never
+//      decoration, and never status.
+//   3. Status stays quiet. Semantic system colors appear only when something needs
+//      attention; a healthy camera shows no telemetry on the wall.
+//   4. Glass is for controls floating over video (see GlassChrome.swift). Lists,
+//      tiles and forms live in the content layer and never use it.
 //
 
 import SwiftUI
 
-// MARK: - Color helpers
+// MARK: - Tokens
+
+enum Theme {
+    // MARK: Brand
+
+    /// Foresight coral (#FF644A), with a lighter Increased Contrast variant.
+    static let accent = Color("AccentColor")
+    /// Foreground on coral: black is 7.2:1, white would be only 2.9:1.
+    static let onAccent = Color.black
+
+    // MARK: Surfaces
+
+    static let canvas = Color.black
+    static let surface = Color(.secondarySystemBackground)
+    /// Fill behind a tile before its first frame arrives.
+    static let placeholder = Color(white: 0.08)
+    static let hairline = Color.white.opacity(0.1)
+
+    // MARK: Status
+
+    static let live = Color.green
+    static let recording = Color.red
+    static let caution = Color.orange
+    static let critical = Color.red
+
+    // MARK: Metrics
+
+    enum Radius {
+        static let tile: CGFloat = 22
+        static let compactTile: CGFloat = 16
+        static let card: CGFloat = 20
+        static let field: CGFloat = 16
+    }
+
+    enum Motion {
+        static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
+        static let chrome = Animation.easeInOut(duration: 0.22)
+    }
+}
+
+// MARK: - Typography
+
+extension Font {
+    /// Montserrat is the brand voice, for the wordmark. Past the welcome screen,
+    /// everything else uses system text styles so it follows Dynamic Type.
+    static func wordmark(size: CGFloat, relativeTo style: Font.TextStyle = .largeTitle) -> Font {
+        .custom("Montserrat-Bold", size: size, relativeTo: style)
+    }
+}
+
+// MARK: - Buttons
+
+/// The one prominent action on a screen: coral capsule, black label.
+struct PrimaryButton: View {
+    let title: String
+    var isLoading: Bool = false
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Text(title)
+                    .fontWeight(.semibold)
+                    .opacity(isLoading ? 0 : 1)
+                if isLoading {
+                    ProgressView()
+                        .tint(Theme.onAccent)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.extraLarge)
+        .tint(Theme.accent)
+        .foregroundStyle(isDisabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.onAccent))
+        .disabled(isDisabled || isLoading)
+    }
+}
+
+extension View {
+    /// Styles a compact call to action (empty states, retry) to match `PrimaryButton`.
+    func prominentAction() -> some View {
+        buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .tint(Theme.accent)
+            .foregroundStyle(Theme.onAccent)
+    }
+}
+
+// MARK: - Fields
+
+/// Groups related inputs into one rounded surface, like a Settings section.
+struct InputGroup<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(
+                Theme.surface,
+                in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+            )
+    }
+}
+
+extension View {
+    /// Row metrics for a field inside an `InputGroup`.
+    func inputRow() -> some View {
+        padding(.horizontal, 16)
+            .frame(minHeight: 52)
+    }
+}
+
+// MARK: - Feedback
+
+/// Inline explanation directly under the thing that failed.
+struct InlineError: View {
+    let message: String
+
+    var body: some View {
+        Label {
+            Text(message)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(Theme.critical)
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .onAppear {
+            AccessibilityNotification.Announcement(message).post()
+        }
+    }
+}
+
+/// A card explaining a state that blocks video, with the one action that resolves
+/// it. Sits in the content layer above the wall, so it uses a plain surface.
+struct StatusCard: View {
+    let systemImage: String
+    var tint: Color = .secondary
+    let title: String
+    let message: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(tint)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
+                        .padding(.top, 6)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(14)
+        .background(
+            Theme.surface,
+            in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// A live-state dot that also differs by shape, so it never relies on color alone:
+/// solid when online, a hollow ring when offline.
+struct StatusDot: View {
+    let isOnline: Bool
+
+    var body: some View {
+        ZStack {
+            if isOnline {
+                Circle().fill(Theme.live)
+            } else {
+                Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1.5)
+            }
+        }
+        .frame(width: 8, height: 8)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Dates
+
+enum ForesightDate {
+    /// Parses the backend's ISO 8601 timestamps (`Date.toISOString()` includes
+    /// fractional seconds; tolerate either form).
+    static func parse(_ string: String?) -> Date? {
+        guard let string else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: string) { return date }
+        return ISO8601DateFormatter().date(from: string)
+    }
+}
+
+// MARK: - Welcome screen
+
+// The welcome screen (AuthView) has its own established look: Montserrat throughout,
+// outlined controls and a coral-edged panel. These support it and nothing else.
 
 extension Color {
     init(hex: String) {
@@ -37,8 +279,6 @@ extension Color {
     }
 }
 
-// MARK: - Typography
-
 extension Font {
     static func montserrat(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         let weightName: String
@@ -54,35 +294,13 @@ extension Font {
     }
 }
 
-// MARK: - Tokens
-
-enum Theme {
-    static let accent = Color(hex: "#FF644A")
+extension Theme {
     static let background = Color.black
     static let cardBackground = Color(hex: "#141416")
-    static let cardBorder = Color(hex: "#1E1E20")
     static let fieldBorder = Color(hex: "#2c2c2e")
     static let secondaryText = Color(hex: "#8E8E93")
     static let redAction = Color(hex: "#FF3B30")
 }
-
-// MARK: - Cards
-
-extension View {
-    /// Dark hairline-bordered card surface used for rows, banners, and panels.
-    func darkCard(cornerRadius: CGFloat = 14) -> some View {
-        background(
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(Theme.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(Theme.cardBorder, lineWidth: 1)
-                )
-        )
-    }
-}
-
-// MARK: - Fields
 
 /// Dark rounded text/secure field: card fill, hairline border, Montserrat.
 /// Behavior modifiers (`textContentType`, `submitLabel`, `onSubmit`, …) are
@@ -122,59 +340,6 @@ struct ThemedField: View {
     }
 }
 
-// MARK: - Buttons
-
-/// Full-width accent-filled primary action button with a loading state.
-struct PrimaryButton: View {
-    let title: String
-    var isLoading: Bool = false
-    var isDisabled: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                if isLoading {
-                    ProgressView().tint(.white)
-                }
-                Text(title)
-                    .font(.montserrat(size: 16, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Theme.accent)
-                    .opacity(isDisabled ? 0.35 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-    }
-}
-
-/// Small outlined secondary action (Journey's "Scan QR Code" idiom).
-struct OutlineButton: View {
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.montserrat(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Theme.fieldBorder, lineWidth: 1.5)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// Floating circular glass icon button (top chrome).
 struct GlassCircleButton: View {
     let systemName: String
@@ -199,46 +364,5 @@ struct GlassCircleButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText ?? systemName)
-    }
-}
-
-/// Glass capsule chrome (brand pill, status pills).
-struct GlassPill<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        HStack(spacing: 8) { content }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
-            )
-    }
-}
-
-// MARK: - Feedback
-
-/// Inline error surface replacing bare red text.
-struct ErrorBanner: View {
-    let message: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.redAction)
-            Text(message)
-                .font(.montserrat(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(12)
-        .darkCard(cornerRadius: 10)
     }
 }
