@@ -582,6 +582,13 @@ describe("E2EE propagation, rotation and vault replacement", () => {
     expect(ok.statusCode).toBe(200);
     expect(sfu.broadcasts).toEqual([{ homeId, msg: expect.objectContaining({ type: "rekey", epoch: 2 }) }]);
 
+    // The rotation-target list carries every holder, incl. the consented recorder.
+    const holders = json<{ epoch: number; pending: Array<{ holderType: string }> }>(
+      await app.inject({ method: "GET", url: `/homes/${homeId}/key/holders`, headers: auth(owner.token) }),
+    );
+    expect(holders.epoch).toBe(2);
+    expect(holders.pending.map((h) => h.holderType).sort()).toEqual(["camera", "recorder", "user"]);
+
     // Recording enabled → the Home shows up in the reconcile, keyed, never "revoked".
     await app.inject({ method: "POST", url: `/cameras/${cameraId}/recording`, headers: auth(owner.token), payload: { enabled: true } });
     const rec = json<{ homeKeys: Array<{ homeId: string; epoch: number; sealedHmk: string | null; revoked: boolean }> }>(

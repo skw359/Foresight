@@ -98,6 +98,9 @@ export function AddCameraModal({
                   <div>
                     Home <code>{ticket.homeId}</code>
                   </div>
+                  <div title="The camera will trust this server permanently — check it is yours.">
+                    Server <code>{ticket.serverUrl}</code>
+                  </div>
                   <div className={`qr-expiry ${expired ? "expired" : ""}`}>
                     {expired
                       ? "Expired"

@@ -9,9 +9,11 @@
  *                follow the user/device across all Homes.
  *   • Home     — this Home's overview + the danger zone (Delete Home).
  *                Owner-only.
+ *   • Home     also manages members (roles, removal → immediate revocation).
  *   • Security — this Home's E2EE control surface (HomeSecurityPanel):
  *                activation, access grants, key reissue, recorder consent,
  *                manual rotate, turning E2EE off. Owner-only.
+ *   • Activity — the Home's audit trail (AuditLogPanel). Owner-only.
  *
  * Non-owners only get the General tab (the tab bar is hidden and a notice
  * explains why); ?tab= requests for owner-only tabs fall back to General.
@@ -26,17 +28,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { HomeDTO } from "@foresight/contract";
 
-import { listHomes } from "../api/client";
+import { ApiRequestError, listHomes, removeMember } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { useNavStage } from "../context/navStage";
 import { useNavProgressWhileLoading } from "../context/navProgress";
 import { Icon } from "../components/Icon";
 import { DeleteHomeModal } from "../components/DeleteHomeModal";
 import { GeneralSettings } from "../components/GeneralSettings";
 import { HomeSecurityPanel } from "../components/HomeSecurityPanel";
+import { MembersPanel } from "../components/MembersPanel";
+import { AuditLogPanel } from "../components/AuditLogPanel";
 import { useCameras } from "../realtime/useCameras";
 import { useHomeRoom } from "../realtime/useHomeRoom";
 
-type SettingsTab = "general" | "home" | "security";
+type SettingsTab = "general" | "home" | "security" | "activity";
 
 export function HomeSettingsPage() {
   const { homeId } = useParams<{ homeId: string }>();
@@ -44,6 +49,9 @@ export function HomeSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stage = useNavStage();
   const [showDelete, setShowDelete] = useState(false);
+  const { user } = useAuth();
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   // undefined = still resolving, null = not found / failed.
   const [home, setHome] = useState<HomeDTO | null | undefined>(undefined);
@@ -82,11 +90,30 @@ export function HomeSettingsPage() {
 
   const tabParam = searchParams.get("tab");
   const requested: SettingsTab =
-    tabParam === "home" || tabParam === "security" ? tabParam : "general";
+    tabParam === "home" || tabParam === "security" || tabParam === "activity" ? tabParam : "general";
   // Home & Security are owner-only; deep links to them fall back to General.
   const tab: SettingsTab = isOwner ? requested : "general";
   const switchTab = (next: SettingsTab) =>
     setSearchParams(next === "general" ? {} : { tab: next }, { replace: true });
+
+  const keyControls = {
+    reconnect: room.reconnect,
+    applyHomeKey: room.applyHomeKey,
+    broadcastRekey: room.broadcastRekey,
+  };
+
+  async function leaveHome() {
+    if (!homeId || !user || leaveBusy) return;
+    setLeaveBusy(true);
+    setLeaveError(null);
+    try {
+      await removeMember(homeId, user.id);
+      navigate("/");
+    } catch (err) {
+      setLeaveError(err instanceof ApiRequestError ? err.message : "Could not leave this Home.");
+      setLeaveBusy(false);
+    }
+  }
 
   return (
     <>
@@ -120,9 +147,15 @@ export function HomeSettingsPage() {
               </div>
             )}
             {home !== null && !isOwner && (
-              <div className="notice-box">
+              <div className="notice-box" style={{ display: "block" }}>
                 Only this Home's owner can manage its Home and Security
                 settings. Your general settings are below.
+                <div className="btn-row" style={{ marginTop: 10 }}>
+                  <button type="button" className="btn sm" disabled={leaveBusy} onClick={() => void leaveHome()}>
+                    {leaveBusy ? <span className="spinner" /> : "Leave this Home"}
+                  </button>
+                </div>
+                {leaveError && <p className="error-box" style={{ marginTop: 8 }}>{leaveError}</p>}
               </div>
             )}
 
@@ -155,6 +188,15 @@ export function HomeSettingsPage() {
                 >
                   Security
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "activity"}
+                  className={tab === "activity" ? "active" : ""}
+                  onClick={() => switchTab("activity")}
+                >
+                  Activity
+                </button>
               </div>
             )}
 
@@ -180,6 +222,8 @@ export function HomeSettingsPage() {
                     </p>
                   </div>
 
+                  <MembersPanel home={home} controls={keyControls} onUpdated={() => loadHome()} />
+
                   <div className="danger-zone">
                     <div className="field">
                       <span>Danger zone</span>
@@ -200,13 +244,14 @@ export function HomeSettingsPage() {
                   <HomeSecurityPanel
                     home={home}
                     cameras={dtos}
-                    controls={{
-                      reconnect: room.reconnect,
-                      applyHomeKey: room.applyHomeKey,
-                      broadcastRekey: room.broadcastRekey,
-                    }}
+                    controls={keyControls}
                     onUpdated={() => loadHome()}
                   />
+                </section>
+
+                {/* ---------------------------- Activity ---------------------------- */}
+                <section role="tabpanel" hidden={tab !== "activity"}>
+                  {tab === "activity" && <AuditLogPanel homeId={home.id} />}
                 </section>
               </>
             )}

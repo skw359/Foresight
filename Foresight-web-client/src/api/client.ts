@@ -2,14 +2,23 @@
  * Typed REST client for the Foresight backend.
  *
  * Every shape comes from `@foresight/contract` — the locked protocol. The base
- * URL is configurable via VITE_API_URL (default http://localhost:3199). The
- * stored JWT is attached as `Authorization: Bearer <token>` on user requests.
+ * URL is configurable via VITE_API_URL; by default a production build talks to
+ * the SAME ORIGIN that served it (the backend serves the dashboard), and the
+ * Vite dev server talks to port 3199 on whatever host the page was opened on.
+ * The stored JWT is attached as `Authorization: Bearer <token>` on user requests.
  *
  * The LiveKit ws URL is never hardcoded; it is read from RtTokenResponse.
  */
 import type {
   AddMemberRequest,
   ApiError,
+  AuditLogResponse,
+  ChangePasswordRequest,
+  ClipUrlResponse,
+  MemberRole,
+  RecordingHealthResponse,
+  SessionResponse,
+  SetKeyVaultRequest,
   AuthResponse,
   CameraDTO,
   ClaimPairingRequest,
@@ -45,10 +54,31 @@ import type {
   UserDTO,
 } from "@foresight/contract";
 
-import { clearToken, getToken } from "./auth";
+import { clearToken, getToken, setToken } from "./auth";
 
-export const API_URL: string =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "http://localhost:3199";
+/**
+ * Resolve the backend base URL. An explicit VITE_API_URL always wins. Otherwise:
+ * production → "" (same origin: the backend serves this build, so every device
+ * that can load the dashboard can reach the API, and HTTPS stays HTTPS); dev →
+ * the Vite page's own host on port 3199. A hardcoded "localhost" would make
+ * every OTHER device's browser call itself.
+ */
+export function resolveApiUrl(
+  env: { VITE_API_URL?: string; DEV?: boolean },
+  location?: { protocol: string; hostname: string },
+): string {
+  const explicit = env.VITE_API_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (!env.DEV) return "";
+  const host = location?.hostname || "localhost";
+  const proto = location?.protocol === "https:" ? "https:" : "http:";
+  return `${proto}//${host.includes(":") ? `[${host}]` : host}:3199`;
+}
+
+export const API_URL: string = resolveApiUrl(
+  import.meta.env as { VITE_API_URL?: string; DEV?: boolean },
+  typeof window !== "undefined" ? window.location : undefined,
+);
 
 /** Error thrown by the client carrying the backend's structured ApiError. */
 export class ApiRequestError extends Error {
@@ -99,8 +129,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
       error: "network_error",
       message:
         err instanceof Error
-          ? `Cannot reach the backend at ${API_URL}. ${err.message}`
-          : `Cannot reach the backend at ${API_URL}.`,
+          ? `Cannot reach the backend at ${API_URL || window.location.origin}. ${err.message}`
+          : `Cannot reach the backend at ${API_URL || window.location.origin}.`,
     });
   }
 
@@ -163,6 +193,25 @@ export async function deleteAccount(): Promise<void> {
   clearToken();
 }
 
+/**
+ * Sign out every device (revokes every session token issued so far). The
+ * response carries a fresh token so THIS browser stays signed in.
+ */
+export async function logoutEverywhere(): Promise<void> {
+  const { token } = await request<SessionResponse>("/auth/logout-all", { method: "POST" });
+  setToken(token);
+}
+
+/**
+ * Change the login password. The caller must send the key vault re-wrapped
+ * under the new password (same public key). Every other session is revoked;
+ * the fresh token is stored for this browser.
+ */
+export async function changePassword(req: ChangePasswordRequest): Promise<void> {
+  const { token } = await request<SessionResponse>("/me/password", { method: "POST", body: req });
+  setToken(token);
+}
+
 /** Update the caller's own profile (display first name). Returns the saved user. */
 export function updateProfile(req: UpdateProfileRequest): Promise<UserDTO> {
   return request<UserDTO>("/me", { method: "PATCH", body: req });
@@ -186,6 +235,31 @@ export function addMember(
     method: "POST",
     body: req,
   });
+}
+
+/** Change a member's role (owner only; the last owner can't be demoted). */
+export function updateMemberRole(homeId: string, userId: string, role: MemberRole): Promise<HomeMemberDTO> {
+  return request<HomeMemberDTO>(`/homes/${homeId}/members/${userId}`, { method: "PATCH", body: { role } });
+}
+
+/**
+ * Remove a member (owner), or leave the Home (pass your own userId). The server
+ * disconnects the member's live sessions; for an E2EE Home the owner's client
+ * must then rotate the key (HomeDTO.keyRotationRequired).
+ */
+export function removeMember(homeId: string, userId: string): Promise<void> {
+  return request<void>(`/homes/${homeId}/members/${userId}`, { method: "DELETE" });
+}
+
+/** The Home's audit trail, newest first (owner only). */
+export function getAuditLog(homeId: string, before?: string, signal?: AbortSignal): Promise<AuditLogResponse> {
+  const q = before ? `?before=${encodeURIComponent(before)}` : "";
+  return request<AuditLogResponse>(`/homes/${homeId}/audit${q}`, { signal });
+}
+
+/** Per-camera 24/7 recorder health (is it actually writing segments?). */
+export function getRecordingHealth(homeId: string, signal?: AbortSignal): Promise<RecordingHealthResponse> {
+  return request<RecordingHealthResponse>(`/homes/${homeId}/recording-health`, { signal });
 }
 
 /** Permanently delete a Home and everything in it (owner only). */
@@ -317,31 +391,28 @@ export function recordingPlaylistUrl(
 }
 
 /**
- * Download a [from,to] range as MP4. The browser's <a download> can't set an
- * Authorization header, so we fetch with the bearer, then save the blob.
+ * Download a [from,to] range as MP4. The server mints a short-lived signed URL
+ * scoped to exactly this camera and range, so a plain download link can stream
+ * the file straight to disk — no Authorization header, and no buffering of the
+ * whole MP4 in browser memory (which crashed the tab for long clips).
  */
 export async function downloadClip(
   cameraId: string,
   from: string,
   to: string,
 ): Promise<void> {
-  const token = getToken();
-  const res = await fetch(
-    `${API_URL}/recordings/${cameraId}/clip.mp4?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  const qs = new URLSearchParams({ from, to });
+  const { url } = await request<ClipUrlResponse>(
+    `/recordings/${cameraId}/clip-url?${qs.toString()}`,
+    { method: "POST" },
   );
-  if (!res.ok) {
-    throw new ApiRequestError(res.status, await res.text());
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = `${API_URL}${url}`;
   a.download = `clip-${from}-${to}.mp4`;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
 }
 
 /* --------------------------------------------------- Realtime (LiveKit) */
@@ -361,7 +432,7 @@ export function rtToken(req: RtTokenRequest): Promise<RtTokenResponse> {
 
 /* ------------------------------------------------------------------ E2EE keys
  * All session/owner-authed. The server stores/serves opaque base64 blobs only —
- * it performs no crypto (E2EE_MODEL_B_PLAN.md §7.1). Sealing/unsealing/KDF all
+ * it performs no crypto (shared/E2EE.md §7.1). Sealing/unsealing/KDF all
  * happen client-side under @foresight/contract's locked constants.
  */
 
@@ -370,8 +441,12 @@ export function getMyKeys(signal?: AbortSignal): Promise<MeKeysResponse> {
   return request<MeKeysResponse>("/me/keys", { signal });
 }
 
-/** POST /me/keys — upload the caller's encrypted key vault (register / first-login). */
-export function putMyKeys(vault: EncryptedKeyVault): Promise<void> {
+/**
+ * POST /me/keys — upload the caller's encrypted key vault (register /
+ * first-login). Replacing an existing, different vault needs `currentPassword`
+ * (409 vault_exists otherwise).
+ */
+export function putMyKeys(vault: EncryptedKeyVault | SetKeyVaultRequest): Promise<void> {
   return request<void>("/me/keys", { method: "POST", body: vault });
 }
 
@@ -386,6 +461,14 @@ export function getPendingKeyHolders(
   signal?: AbortSignal,
 ): Promise<PendingKeyHoldersResponse> {
   return request<PendingKeyHoldersResponse>(`/homes/${homeId}/key/pending`, { signal });
+}
+
+/**
+ * GET /homes/:id/key/holders — owner only: EVERY holder the next epoch must be
+ * sealed to (members/cameras with pubkeys + the recorder while consented).
+ */
+export function getKeyHolders(homeId: string, signal?: AbortSignal): Promise<PendingKeyHoldersResponse> {
+  return request<PendingKeyHoldersResponse>(`/homes/${homeId}/key/holders`, { signal });
 }
 
 /** POST /homes/:id/key — upload sealed copies for pending holders (idempotent). */

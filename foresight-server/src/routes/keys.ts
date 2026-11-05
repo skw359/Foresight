@@ -10,6 +10,7 @@
  *   GET  /me/keys                       → MeKeysResponse
  *   GET  /homes/:homeId/key             → HomeKeyResponse (caller's own copy)
  *   GET  /homes/:homeId/key/pending     → PendingKeyHoldersResponse
+ *   GET  /homes/:homeId/key/holders     → PendingKeyHoldersResponse (owner; every rotation target)
  *   POST /homes/:homeId/key             submit sealed copies  → 204 (idempotent; §10.5 — first-contact user/recorder seals are owner-only)
  *   DELETE /homes/:homeId/key/:holderType/:holderId  owner repair → 204 (drops the holder's current-epoch copy → back to pending)
  *   POST /homes/:homeId/key/init        owner activation (0→lastKeyEpoch+1)  → HomeKeyEpochResponse
@@ -157,7 +158,11 @@ function upsertKeyOps(homeId: string, epoch: number, keys: SealedKeyUpload[], se
  * activation precheck + key/init seal targets consume exactly that — do not
  * short-circuit to [] here.
  */
-async function computePending(homeId: string, keyEpoch: number): Promise<PendingKeyHolder[]> {
+async function computePending(
+  homeId: string,
+  keyEpoch: number,
+  opts: { all?: boolean } = {},
+): Promise<PendingKeyHolder[]> {
   const [members, cameras, keyRows, recorderIdentity] = await Promise.all([
     prisma.homeMember.findMany({
       where: { homeId },
@@ -178,7 +183,7 @@ async function computePending(homeId: string, keyEpoch: number): Promise<Pending
   for (const m of members) {
     if (!m.user.publicKey) continue; // no vault yet → "waiting for access" on their side
     const k = key("user", m.user.id);
-    if (atCurrent.has(k)) continue;
+    if (atCurrent.has(k) && !opts.all) continue;
     pending.push({
       holderType: "user",
       holderId: m.user.id,
@@ -190,7 +195,7 @@ async function computePending(homeId: string, keyEpoch: number): Promise<Pending
   for (const c of cameras) {
     if (!c.publicKey) continue;
     const k = key("camera", c.id);
-    if (atCurrent.has(k)) continue;
+    if (atCurrent.has(k) && !opts.all) continue;
     pending.push({
       holderType: "camera",
       holderId: c.id,
@@ -202,7 +207,19 @@ async function computePending(homeId: string, keyEpoch: number): Promise<Pending
   // The recorder is a pending candidate only where consent already existed (a
   // recorder row at some epoch) but is missing at the current epoch — i.e. an
   // epoch backfill after a rotate. First consent is granted via recorder-consent.
-  if (recorderEverSealed && recorderIdentity) {
+  if (opts.all) {
+    // Rotation targets: the recorder only while its consent is IN FORCE (a row
+    // at the current epoch) — a rotation must never grant consent implicitly.
+    if (recorderIdentity && atCurrent.has(key("recorder", recorderIdentity.id))) {
+      pending.push({
+        holderType: "recorder",
+        holderId: recorderIdentity.id,
+        publicKey: recorderIdentity.publicKey,
+        label: "recorder",
+        firstContact: false,
+      });
+    }
+  } else if (recorderEverSealed && recorderIdentity) {
     const k = key("recorder", recorderIdentity.id);
     if (!atCurrent.has(k)) {
       pending.push({
@@ -297,6 +314,24 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       const home = await prisma.home.findUnique({ where: { id: homeId }, select: { keyEpoch: true } });
       if (!home) throw notFound("Home not found");
       return { epoch: home.keyEpoch, pending: await computePending(homeId, home.keyEpoch) };
+    },
+  );
+
+  // -------------------------------------------- /homes/:homeId/key/holders (GET)
+  // Owner only: EVERY holder that should receive the key at the next epoch
+  // (members + cameras with pubkeys, plus the recorder while consented), so a
+  // rotation can seal to all of them in ONE request. The server broadcasts
+  // `rekey` as soon as the rotation commits, so copies sealed only afterwards
+  // (a post-rotate backfill) would arrive after cameras already re-fetched.
+  app.get(
+    "/homes/:homeId/key/holders",
+    { preHandler: requireUser },
+    async (req): Promise<PendingKeyHoldersResponse> => {
+      const { homeId } = req.params as { homeId: string };
+      await requireOwner(req.user!.id, homeId, "rotate this Home's key");
+      const home = await prisma.home.findUnique({ where: { id: homeId }, select: { keyEpoch: true } });
+      if (!home) throw notFound("Home not found");
+      return { epoch: home.keyEpoch, pending: await computePending(homeId, home.keyEpoch, { all: true }) };
     },
   );
 

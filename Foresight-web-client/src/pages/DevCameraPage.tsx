@@ -35,6 +35,7 @@ import {
 import {
   PROTOCOL_VERSION,
   decodeDataMessage,
+  isAuthorizedSender,
   encodeDataMessage,
   parseIdentity,
   type AckMessage,
@@ -312,8 +313,9 @@ export function DevCameraPage() {
         .on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
           const msg = decodeDataMessage(payload);
           if (msg?.type === "command") {
-            // Only viewers may command this camera.
-            if (participant && parseIdentity(participant.identity)?.role !== "viewer") return;
+            // Only viewers may command this camera — never another camera and
+            // never sender-less data (which only the server API can produce).
+            if (!isAuthorizedSender(msg, participant?.identity)) return;
             void handleCommand(msg);
           }
         })

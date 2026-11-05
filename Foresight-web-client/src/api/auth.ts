@@ -48,6 +48,16 @@ export function setSession(token: string, user: UserDTO): void {
   emit();
 }
 
+/** Replace the stored token (after a session refresh) without touching the user. */
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* storage may be unavailable; the old token stops working server-side */
+  }
+  emit();
+}
+
 /** Replace the stored user (e.g. after a profile edit) without touching the token. */
 export function setUser(user: UserDTO): void {
   try {
