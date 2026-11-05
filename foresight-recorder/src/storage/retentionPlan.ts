@@ -19,6 +19,8 @@ export interface SegmentFile {
    * the runner unlinks together with the day file.
    */
   indexPath?: string;
+  /** Which camera the footage belongs to ("<homeId>/<cameraId>"), for fair-share pruning. */
+  owner?: string;
 }
 
 export interface RetentionOptions {
@@ -32,6 +34,14 @@ export interface RetentionOptions {
   freeBytes: number;
   /** "now" in epoch milliseconds (injectable for tests). */
   nowMs: number;
+  /**
+   * How disk-pressure pruning picks victims (age expiry is always global):
+   *  - "oldest": globally oldest first — one high-bitrate camera (or one Home on
+   *    a shared server) can evict everyone else's history.
+   *  - "fair" (default): the camera currently using the MOST space loses its
+   *    oldest footage first, so storage pressure is shared out between cameras.
+   */
+  policy?: "fair" | "oldest";
 }
 
 export interface RetentionPlan {
@@ -42,7 +52,7 @@ export interface RetentionPlan {
 /**
  * Decide which segments to delete. Age-expired segments always go. Then, if the
  * remaining total still exceeds the disk cap OR free space is below the floor,
- * delete the oldest remaining segments until both constraints are satisfied.
+ * delete more (per `policy`) until both constraints are satisfied.
  * Deterministic and side-effect free.
  */
 export function planRetention(segments: SegmentFile[], opts: RetentionOptions): RetentionPlan {
@@ -65,16 +75,43 @@ export function planRetention(segments: SegmentFile[], opts: RetentionOptions): 
   const reclaimedForFree = toDelete.reduce((sum, s) => sum + s.bytes, 0);
   let freeBytes = opts.freeBytes + reclaimedForFree;
   let diskCount = 0;
-
-  // survivors is already oldest-first; drop from the front while over budget.
-  let i = 0;
-  while (i < survivors.length && (totalBytes > opts.maxBytes || freeBytes < opts.minFreeBytes)) {
-    const seg = survivors[i]!;
+  const overBudget = (): boolean => totalBytes > opts.maxBytes || freeBytes < opts.minFreeBytes;
+  const take = (seg: SegmentFile): void => {
     toDelete.push(seg);
     totalBytes -= seg.bytes;
     freeBytes += seg.bytes;
     diskCount++;
-    i++;
+  };
+
+  if ((opts.policy ?? "fair") === "oldest") {
+    // survivors is already oldest-first; drop from the front while over budget.
+    for (let i = 0; i < survivors.length && overBudget(); i++) take(survivors[i]!);
+    return { toDelete, reasons: { age: ageCount, disk: diskCount } };
+  }
+
+  // Fair share: per-owner queues (oldest first) and per-owner byte totals;
+  // repeatedly trim the oldest segment of whichever camera holds the most.
+  const queues = new Map<string, { segs: SegmentFile[]; next: number; bytes: number }>();
+  for (const seg of survivors) {
+    const key = seg.owner ?? "";
+    let q = queues.get(key);
+    if (!q) {
+      q = { segs: [], next: 0, bytes: 0 };
+      queues.set(key, q);
+    }
+    q.segs.push(seg);
+    q.bytes += seg.bytes;
+  }
+  while (overBudget()) {
+    let victim: { segs: SegmentFile[]; next: number; bytes: number } | null = null;
+    for (const q of queues.values()) {
+      if (q.next >= q.segs.length) continue;
+      if (!victim || q.bytes > victim.bytes) victim = q;
+    }
+    if (!victim) break;
+    const seg = victim.segs[victim.next++]!;
+    victim.bytes -= seg.bytes;
+    take(seg);
   }
 
   return { toDelete, reasons: { age: ageCount, disk: diskCount } };

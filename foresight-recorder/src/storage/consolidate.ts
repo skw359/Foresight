@@ -13,7 +13,15 @@
  * crash leftover; once the index exists we never rebuild — the only remaining
  * work is deleting the loose segments it lists. An index that fails validation
  * authorizes NOTHING: its bucket is skipped untouched.
+ *
+ * CONCURRENCY + SPACE (REC-03) — passes never overlap (a long backlog pass can
+ * outlast the interval; two passes writing one tmp file would publish a day
+ * file with zero-filled holes and then delete its sources). Each build writes a
+ * UNIQUELY named tmp opened with O_EXCL, and is skipped when the volume lacks
+ * room for a full copy of the day plus MIN_FREE_GB — a full disk would also
+ * break the live encoders.
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -41,6 +49,43 @@ import { log } from "../log.js";
 const QUIET_SECONDS = 3600;
 /** Copy buffer size for the stream-concat. */
 const COPY_CHUNK = 1 << 20; // 1 MiB
+
+const GB = 1024 * 1024 * 1024;
+
+/** A tmp path no other pass (or crashed pass) can collide with. */
+function uniqueTmp(finalPath: string): string {
+  return `${finalPath}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
+}
+
+/** `day_<D>.ts…tmp` / `day_<D>.json…tmp` — legacy fixed names and unique ones. */
+function isDayTmp(name: string, dayStamp: string): boolean {
+  return (
+    name.endsWith(".tmp") &&
+    (name.startsWith(`${dayFileName(dayStamp)}.`) || name.startsWith(`${dayIndexFileName(dayStamp)}.`))
+  );
+}
+
+async function removeDayTmpLeftovers(bucketDir: string, dayStamp: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await fsp.readdir(bucketDir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (isDayTmp(name, dayStamp)) await fsp.rm(path.join(bucketDir, name), { force: true }).catch(() => undefined);
+  }
+}
+
+/** Free bytes on the volume holding `dir`, or null when it can't be measured. */
+async function freeBytes(dir: string): Promise<number | null> {
+  try {
+    const s = await fsp.statfs(dir);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
 
 export interface ConsolidateResult {
   /** Buckets freshly consolidated (resume-only cleanup does not count). */
@@ -112,8 +157,8 @@ async function consolidateBucket(
   const indexName = dayIndexFileName(dayStamp);
   const finalPath = path.join(bucketDir, finalName);
   const indexPath = path.join(bucketDir, indexName);
-  const tmpPath = finalPath + ".tmp";
-  const indexTmpPath = indexPath + ".tmp";
+  const tmpPath = uniqueTmp(finalPath);
+  const indexTmpPath = uniqueTmp(indexPath);
 
   let hasIndex = false;
   const segs: Array<{ name: string; epoch: number }> = [];
@@ -179,11 +224,34 @@ async function consolidateBucket(
   const newestEpoch = segs.reduce((max, s) => Math.max(max, s.epoch), -Infinity);
   if (Math.floor(nowMs / 1000) - newestEpoch <= QUIET_SECONDS) return res;
 
+  // ---- Space check: the build needs a full second copy of the day. -------
+  let needed = 0;
+  for (const seg of inDay) {
+    try {
+      needed += (await fsp.stat(path.join(bucketDir, seg.name))).size;
+    } catch {
+      /* vanished — the copy loop below aborts cleanly */
+    }
+  }
+  const free = await freeBytes(bucketDir);
+  const reserve = config.minFreeGb * GB;
+  if (free !== null && free < needed + reserve) {
+    log.warn("consolidate: not enough free space to build day file — skipping bucket", {
+      bucketDir,
+      day: dayStamp,
+      neededMB: Math.round(needed / (1024 * 1024)),
+      freeMB: Math.round(free / (1024 * 1024)),
+      reserveGB: config.minFreeGb,
+    });
+    return res;
+  }
+
   // ---- Build: stream-concat sources (epoch order) into the tmp day file. --
   const parts: Array<{ epoch: number; offset: number; bytes: number }> = [];
   let totalBytes = 0;
   let ok = true;
-  const fh = await fsp.open(tmpPath, "w"); // truncates any crash-leftover tmp
+  // "wx": O_CREAT|O_EXCL — never truncate a file another pass is writing.
+  const fh = await fsp.open(tmpPath, "wx");
   try {
     for (const seg of inDay) {
       const srcPath = path.join(bucketDir, seg.name);
@@ -276,7 +344,7 @@ async function consolidateBucket(
   await fsp.rename(tmpPath, finalPath);
 
   // Publish the index (tmp → rename): the atomic authority flip.
-  const ifh = await fsp.open(indexTmpPath, "w");
+  const ifh = await fsp.open(indexTmpPath, "wx");
   try {
     await ifh.writeFile(JSON.stringify(index));
     await ifh.sync().catch(() => undefined);
@@ -299,6 +367,9 @@ async function consolidateBucket(
       });
     }
   }
+  // Crash leftovers of earlier (crashed) passes for this day: passes never
+  // overlap in this process, so any other tmp for the day is abandoned.
+  await removeDayTmpLeftovers(bucketDir, dayStamp);
   res.daysConsolidated = 1;
   res.bytesConsolidated = totalBytes;
   log.info("consolidated day", {
@@ -357,20 +428,38 @@ export async function consolidateOnce(nowMs: number = Date.now()): Promise<Conso
   return totals;
 }
 
+let passInFlight: Promise<ConsolidateResult> | null = null;
+
+/** True while a consolidation pass is running (retention defers tmp cleanup meanwhile). */
+export function consolidationRunning(): boolean {
+  return passInFlight !== null;
+}
+
+/**
+ * Run one pass unless one is already running — then join it instead. Passes
+ * must never overlap (see the module docs).
+ */
+export function consolidateExclusive(nowMs?: number): Promise<ConsolidateResult> {
+  if (passInFlight) return passInFlight;
+  passInFlight = consolidateOnce(nowMs).finally(() => {
+    passInFlight = null;
+  });
+  return passInFlight;
+}
+
 /** Start the periodic consolidation loop; returns a stop() handle. */
 export function startConsolidationLoop(): () => void {
-  const timer = setInterval(() => {
-    consolidateOnce().catch((err) =>
-      log.error("consolidation loop error", { err: String(err) }),
-    );
-  }, config.consolidateIntervalMs);
+  const run = (label: string): void => {
+    if (passInFlight) {
+      log.info("consolidation pass still running — skipping this tick");
+      return;
+    }
+    consolidateExclusive().catch((err) => log.error(label, { err: String(err) }));
+  };
+  const timer = setInterval(() => run("consolidation loop error"), config.consolidateIntervalMs);
   // Kick off shortly after boot (after retention's 5 s kickoff) so a backlog
   // of finished days starts draining without waiting a whole interval.
-  const kickoff = setTimeout(() => {
-    consolidateOnce().catch((err) =>
-      log.error("consolidation kickoff error", { err: String(err) }),
-    );
-  }, 30_000);
+  const kickoff = setTimeout(() => run("consolidation kickoff error"), 30_000);
   return () => {
     clearInterval(timer);
     clearTimeout(kickoff);

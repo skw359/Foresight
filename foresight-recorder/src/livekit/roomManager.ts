@@ -23,6 +23,13 @@
  * A new HMK at a higher epoch on a connected home is applied live via
  * KeyProvider.setSharedKey(key, 0) with a clean segment boundary (§8.2/§8.4).
  * E2EE turned off (epoch back to 0) on a keyed connection → reconnect plaintext.
+ *
+ * ── Self-healing (REC-01) ──
+ * A room can drop for good (LiveKit restarted, a partition longer than the
+ * SDK's own retry window). Recording must not depend on a webhook to come back:
+ * a terminal Disconnected schedules a reconnect with capped exponential backoff
+ * while any camera is armed, and every reconcile pass runs healthCheck(), which
+ * re-syncs any armed Home whose room is not connected.
  */
 import {
   Room,
@@ -42,7 +49,7 @@ import {
   E2EE_RATCHET_SALT,
   E2EE_RATCHET_WINDOW_SIZE,
 } from "@foresight/contract";
-import { recorderToken } from "./token.js";
+import { recorderToken, type RecorderToken } from "./token.js";
 import { CameraRecorder } from "./cameraRecorder.js";
 import { pinVideoQuality } from "./layerPin.js";
 import { KeyManager, liveKitSharedKey } from "../crypto/keyManager.js";
@@ -98,9 +105,29 @@ function encryptionOptions(hmkBase64: string): E2EEOptions {
   };
 }
 
+/** Reconnect backoff after a terminal room disconnect: 1 s doubling to 30 s, ±20 % jitter. */
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS = 30_000;
+
+export function reconnectDelayMs(attempt: number, random: () => number = Math.random): number {
+  const base = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.max(0, attempt));
+  return Math.round(base * (0.8 + 0.4 * random()));
+}
+
+/** Injection points (tests use fakes; production uses the real SDK). */
+export interface RoomManagerDeps {
+  createRoom?: () => Room;
+  mintToken?: (homeId: string) => Promise<RecorderToken>;
+  createRecorder?: (homeId: string, cameraId: string) => CameraRecorder;
+}
+
 class RoomSession {
   private room: Room | null = null;
   private connecting: Promise<void> | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempt = 0;
+  /** True while held keyless on purpose (awaiting consent / revoked) — not a fault to heal. */
+  private heldKeyless = false;
   private readonly recorders = new Map<string, CameraRecorder>(); // cameraId → recorder
   /** epoch we are currently connected with (0 = plaintext), or null if not connected. */
   private connectedEpoch: number | null = null;
@@ -116,6 +143,7 @@ class RoomSession {
   constructor(
     private readonly homeId: string,
     private readonly keyManager: KeyManager,
+    private readonly deps: RoomManagerDeps = {},
   ) {
     this.log = rootLog.child({ mod: "room", homeId });
   }
@@ -134,7 +162,10 @@ class RoomSession {
 
   async arm(cameraId: string): Promise<void> {
     if (!this.recorders.has(cameraId)) {
-      this.recorders.set(cameraId, new CameraRecorder(this.homeId, cameraId));
+      this.recorders.set(
+        cameraId,
+        this.deps.createRecorder?.(this.homeId, cameraId) ?? new CameraRecorder(this.homeId, cameraId),
+      );
     }
     await this.syncKey();
   }
@@ -145,13 +176,58 @@ class RoomSession {
     this.recorders.delete(cameraId);
     this.setSubscribed(cameraId, false);
     await rec.stop();
-    if (this.isEmpty()) await this.disconnect();
+    if (this.isEmpty()) {
+      this.cancelReconnect();
+      await this.disconnect();
+    }
   }
 
   async stopAll(): Promise<void> {
+    this.cancelReconnect();
     for (const rec of this.recorders.values()) await rec.stop();
     this.recorders.clear();
     await this.disconnect();
+  }
+
+  /**
+   * Reconcile backstop: an armed session whose room is not connected (and is
+   * not deliberately held keyless or already connecting) is re-synced now.
+   */
+  async healthCheck(): Promise<void> {
+    if (this.isEmpty() || this.connecting || this.heldKeyless) return;
+    if (this.room?.isConnected) return;
+    this.log.warn("armed but not connected — reconnecting", { attempt: this.reconnectAttempt });
+    await this.syncKey();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.isEmpty()) return;
+    const delay = reconnectDelayMs(this.reconnectAttempt++);
+    this.log.info("scheduling room reconnect", { delayMs: delay, attempt: this.reconnectAttempt });
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.syncKey().catch((err) => {
+        this.log.warn("room reconnect failed", { err: String(err) });
+        this.scheduleReconnect();
+      });
+    }, delay);
+    this.reconnectTimer.unref();
+  }
+
+  private cancelReconnect(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  /** A room dropped without us asking: pause recorders, then reconnect with backoff. */
+  private onRoomDisconnected(room: Room): void {
+    if (this.room !== room) return; // our own disconnect()/reconnect — not a fault
+    this.log.warn("room disconnected unexpectedly — will reconnect", { armed: this.recorders.size });
+    this.room = null;
+    this.connectedEpoch = null;
+    this.appliedHmk = null;
+    for (const rec of this.recorders.values()) rec.onTrackGone();
+    this.scheduleReconnect();
   }
 
   /**
@@ -160,7 +236,10 @@ class RoomSession {
    * safe to call repeatedly (idempotent).
    */
   async syncKey(): Promise<void> {
-    if (this.isEmpty()) return;
+    if (this.isEmpty()) {
+      this.cancelReconnect();
+      return;
+    }
     const key = this.keyManager.getHomeKey(this.homeId);
 
     // Not activated (epoch 0) or unknown → plaintext home, connect as today.
@@ -185,8 +264,14 @@ class RoomSession {
    * plaintext↔activated transitions.
    */
   private async activate(hmkBase64: string | null, epoch: number): Promise<void> {
+    this.heldKeyless = false;
     if (!this.room?.isConnected) {
-      await this.ensureConnected(hmkBase64, epoch);
+      try {
+        await this.ensureConnected(hmkBase64, epoch);
+      } catch (err) {
+        this.scheduleReconnect();
+        throw err;
+      }
     } else if (this.connectedEpoch === 0 && hmkBase64 !== null) {
       // Home activated while we were connected plaintext — cannot add E2EE to a
       // live plaintext room; reconnect with encryption.
@@ -209,6 +294,8 @@ class RoomSession {
 
   /** Keyless (awaiting_consent / revoked): never connect; hold recorders + drop any live room. */
   private async holdKeyless(state: "awaiting_consent" | "revoked"): Promise<void> {
+    this.heldKeyless = true;
+    this.cancelReconnect();
     for (const rec of this.recorders.values()) rec.enterGate(state);
     if (this.room) await this.disconnect();
     this.connectedEpoch = null;
@@ -254,15 +341,22 @@ class RoomSession {
     if (this.room?.isConnected) return;
     if (this.connecting) return this.connecting;
     this.connecting = (async () => {
-      const tok = await recorderToken(this.homeId);
-      const room = new Room();
+      const tok = await (this.deps.mintToken ?? recorderToken)(this.homeId);
+      const room = this.deps.createRoom?.() ?? new Room();
       this.wireEvents(room);
       const opts: RoomOptions = { autoSubscribe: false, dynacast: true };
       if (hmkBase64 !== null) opts.encryption = encryptionOptions(hmkBase64);
-      await room.connect(tok.url, tok.token, opts);
+      try {
+        await room.connect(tok.url, tok.token, opts);
+      } catch (err) {
+        room.removeAllListeners();
+        throw err;
+      }
       this.room = room;
       this.connectedEpoch = hmkBase64 !== null ? epoch : 0;
       this.appliedHmk = hmkBase64;
+      this.reconnectAttempt = 0;
+      this.cancelReconnect();
       this.log.info("connected to room", {
         room: tok.room,
         identity: tok.identity,
@@ -331,7 +425,7 @@ class RoomSession {
       for (const rec of this.recorders.values()) rec.onEncryptionStall("encryption_error");
     });
 
-    room.on(RoomEvent.Disconnected, () => this.log.warn("room disconnected"));
+    room.on(RoomEvent.Disconnected, () => this.onRoomDisconnected(room));
     room.on(RoomEvent.Reconnecting, () => this.log.warn("room reconnecting"));
     room.on(RoomEvent.Reconnected, () => {
       this.log.info("room reconnected — resubscribing");
@@ -429,12 +523,15 @@ export class RoomManager {
   private readonly sessions = new Map<string, RoomSession>(); // homeId → session
   private readonly log = rootLog.child({ mod: "roomManager" });
 
-  constructor(private readonly keyManager: KeyManager) {}
+  constructor(
+    private readonly keyManager: KeyManager,
+    private readonly deps: RoomManagerDeps = {},
+  ) {}
 
   async arm(homeId: string, cameraId: string): Promise<void> {
     let session = this.sessions.get(homeId);
     if (!session) {
-      session = new RoomSession(homeId, this.keyManager);
+      session = new RoomSession(homeId, this.keyManager, this.deps);
       this.sessions.set(homeId, session);
     }
     await session.arm(cameraId);
@@ -458,6 +555,15 @@ export class RoomManager {
     if (!session) return;
     await session.syncKey();
     if (session.isEmpty()) this.sessions.delete(homeId);
+  }
+
+  /** Reconcile backstop: re-sync every armed Home whose room isn't connected (REC-01). */
+  async healthCheck(): Promise<void> {
+    for (const [homeId, session] of this.sessions) {
+      await session.healthCheck().catch((err) =>
+        this.log.warn("health check reconnect failed", { homeId, err: String(err) }),
+      );
+    }
   }
 
   /** Set of "homeId/cameraId" currently armed (for reconcile diffing). */

@@ -7,6 +7,7 @@ import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkSecret } from "./secrets.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -14,6 +15,16 @@ function required(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing required environment variable: ${name}`);
   return v;
+}
+
+/** Problems tolerated only because FORESIGHT_INSECURE_DEV=1; logged loudly at boot. */
+export const insecureWarnings: string[] = [];
+
+function strongSecret(name: string): string {
+  const value = required(name);
+  const problem = checkSecret(name, value);
+  if (problem) insecureWarnings.push(problem);
+  return value;
 }
 
 function num(name: string, fallback: number): number {
@@ -75,13 +86,13 @@ export const config = {
   // holds the API key/secret and mints its own hidden-subscriber tokens.
   livekitUrl: required("LIVEKIT_URL"),
   livekitApiKey: required("LIVEKIT_API_KEY"),
-  livekitApiSecret: required("LIVEKIT_API_SECRET"),
+  livekitApiSecret: strongSecret("LIVEKIT_API_SECRET"),
 
   // ----------------------------------------------------------- Control API
   port: num("RECORDER_PORT", 3399),
   // Required header on every control + reconcile call (symmetric with the
   // server's RECORDER_SHARED_SECRET).
-  sharedSecret: required("RECORDER_SHARED_SECRET"),
+  sharedSecret: strongSecret("RECORDER_SHARED_SECRET"),
 
   // ----------------------------------------------------------- Media / ffmpeg
   ffmpegPath: process.env.FFMPEG_PATH
@@ -104,9 +115,11 @@ export const config = {
   // v1 default: video only (avoids A/V sync across two raw pipes; see plan §10).
   recordAudio: bool("RECORD_AUDIO", false),
   segmentSeconds: num("SEGMENT_SECONDS", 6),
-  // Assumed input frame rate for the rawvideo pipe. Capture is fed in real time;
-  // a fixed rate is fine for security footage (PTS-accurate timing is M4/M5).
-  fps: num("RECORD_FPS", 30),
+  // Output frame rate of recordings. Incoming frames are PACED onto this rate
+  // by their real timestamps (media/pacer.ts): slower cameras get repeated
+  // frames, faster ones dropped ones, so media time always equals wall time.
+  // Lowered automatically per camera while the host can't keep up.
+  fps: Math.max(1, num("RECORD_FPS", 30)),
   // libx264 by default; set to h264_nvenc when an NVIDIA GPU is available to
   // offload the continuous encode.
   encoder: process.env.ENCODER ?? "libx264",
@@ -117,6 +130,14 @@ export const config = {
   retentionDays: num("RETENTION_DAYS", 14),
   retentionMaxGb: num("RETENTION_MAX_GB", 500),
   minFreeGb: num("MIN_FREE_GB", 25),
+  // Which footage goes first when the disk budget (not age) forces pruning:
+  //   "fair"   — the camera using the most space loses its oldest footage
+  //              first, so one high-bitrate camera (or one Home) can't evict
+  //              everyone else's history (default);
+  //   "oldest" — globally oldest first.
+  retentionPolicy: (process.env.RETENTION_POLICY?.trim().toLowerCase() === "oldest" ? "oldest" : "fair") as
+    | "fair"
+    | "oldest",
   retentionIntervalMs: num("RETENTION_INTERVAL_MS", 10 * 60 * 1000),
 
   // ----------------------------------------------------------- Consolidation
@@ -128,7 +149,9 @@ export const config = {
 
   // ----------------------------------------------------------- Reconcile
   // Where to ask "which cameras should be recording?" (server internal API).
-  serverUrl: (process.env.SERVER_URL ?? "http://127.0.0.1:3199").replace(/\/$/, ""),
+  // The server's INTERNAL API listener (127.0.0.1:INTERNAL_PORT, default 3198)
+  // — not its public port.
+  serverUrl: (process.env.SERVER_URL ?? "http://127.0.0.1:3198").replace(/\/$/, ""),
   reconcileIntervalMs: num("RECONCILE_INTERVAL_MS", 60 * 1000),
 
   // ----------------------------------------------------------- E2EE (Model B)
