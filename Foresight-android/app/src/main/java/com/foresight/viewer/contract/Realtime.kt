@@ -137,6 +137,24 @@ object Foresight {
             else -> null
         }
     }
+
+    /**
+     * Mirrors isAuthorizedSender in realtime.ts. `senderIdentity` is the LiveKit
+     * identity that published the packet, or null for server-originated data:
+     *   - state / telemetry: only the camera the payload is about;
+     *   - ack: only a camera; command: only a viewer (never sender-less);
+     *   - rekey: a viewer (the rotating owner) or the server itself.
+     */
+    fun isAuthorizedSender(message: DataMessage, senderIdentity: String?): Boolean {
+        val sender = senderIdentity?.let { parseIdentity(it) }
+        return when (message) {
+            is StateMessage -> sender != null && sender.role == ParticipantRole.CAMERA && sender.id == message.cameraId
+            is TelemetryMessage -> sender != null && sender.role == ParticipantRole.CAMERA && sender.id == message.cameraId
+            is AckMessage -> sender != null && sender.role == ParticipantRole.CAMERA
+            is CommandMessage -> sender != null && sender.role == ParticipantRole.VIEWER
+            is RekeyMessage -> senderIdentity == null || (sender != null && sender.role == ParticipantRole.VIEWER)
+        }
+    }
 }
 
 // MARK: - (de)serialization
@@ -158,9 +176,10 @@ object ForesightCodec {
         is RekeyMessage -> json.encodeToString(RekeyMessage.serializer(), message)
     }.encodeToByteArray()
 
+    /** null for malformed payloads, unknown types, and any other protocol version. */
     fun decode(bytes: ByteArray): DataMessage? = try {
         val element = json.parseToJsonElement(bytes.decodeToString())
-        when (element.jsonObject["type"]?.jsonPrimitive?.content) {
+        val message: DataMessage? = when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "command" -> json.decodeFromJsonElement(CommandMessage.serializer(), element)
             "ack" -> json.decodeFromJsonElement(AckMessage.serializer(), element)
             "state" -> json.decodeFromJsonElement(StateMessage.serializer(), element)
@@ -168,7 +187,16 @@ object ForesightCodec {
             "rekey" -> json.decodeFromJsonElement(RekeyMessage.serializer(), element)
             else -> null
         }
+        message?.takeIf { versionOf(it) == PROTOCOL_VERSION }
     } catch (_: Exception) {
         null
+    }
+
+    private fun versionOf(message: DataMessage): Int = when (message) {
+        is CommandMessage -> message.v
+        is AckMessage -> message.v
+        is StateMessage -> message.v
+        is TelemetryMessage -> message.v
+        is RekeyMessage -> message.v
     }
 }

@@ -16,8 +16,16 @@
  *    dataChannelEncryptionEnabled stays FALSE so commands/telemetry/rekey stay
  *    readable by all Foresight clients (plan §2.3 — do not change this until
  *    every client migrates together).
+ *
+ * Every data packet is version-checked and its SENDER authorized
+ * (Foresight.isAuthorizedSender). A room that drops while a screen wants it is
+ * reconnected with backoff; a 401/403/404 from the token endpoint (signed out,
+ * removed from the Home, Home deleted) stops the retries.
  */
 package com.foresight.viewer.realtime
+
+import com.foresight.viewer.support.CleartextPolicy
+import kotlinx.coroutines.CancellationException
 
 import android.content.Context
 import androidx.compose.runtime.getValue
@@ -128,6 +136,12 @@ class RoomManager(
     /** Retries the token fetch while we're activated but not yet keyed. */
     private var keyRetryJob: Job? = null
 
+    /** True while a screen wants this room connected (connect() … disconnect()). */
+    private var wantsConnection = false
+    /** Pending automatic reconnect after a dropped room / failed connect. */
+    private var reconnectJob: Job? = null
+    private var reconnectAttempt = 0
+
     /**
      * Audio playback ("listen") toggle per camera id. Remote audio plays only
      * while its publication is subscribed, so listen == subscription state.
@@ -175,9 +189,15 @@ class RoomManager(
             phase is ConnectionPhase.Failed ||
             phase == ConnectionPhase.AwaitingKey ||
             phase == ConnectionPhase.Locked
+        wantsConnection = true
         if (!canConnect) return
 
+        // Jobs that call connect() clear their own handle first: cancelling the
+        // coroutine we're running in would cancel the token request below.
         keyRetryJob?.cancel()
+        keyRetryJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
         phase = ConnectionPhase.Connecting
         try {
             val rt = api.rtToken(homeId, ParticipantRole.VIEWER)
@@ -224,21 +244,48 @@ class RoomManager(
                 room.e2eeOptions = null
             }
 
+            CleartextPolicy.violation(rt.livekitUrl)?.let { throw ApiException("insecure_livekit", it) }
             room.connect(url = rt.livekitUrl, token = rt.token)
             phase = ConnectionPhase.Connected
+            reconnectAttempt = 0
             reconcileParticipants()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             phase = ConnectionPhase.Failed((e as? ApiException)?.message ?: (e.message ?: "Connection failed."))
+            // Signed out / removed / Home gone / refused as insecure: retrying can't help.
+            val code = (e as? ApiException)?.error
+            if (code !in setOf("unauthorized", "forbidden", "not_found", "insecure_server", "insecure_livekit")) {
+                scheduleReconnect()
+            }
         }
     }
 
     fun disconnect() {
+        wantsConnection = false
         keyRetryJob?.cancel()
         keyRetryJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
         listenEnabled.clear()
         camerasById.values.forEach { it.e2eeDecrypting = false }
+        // Mark disconnected FIRST so the Disconnected event for this intentional
+        // teardown isn't read as a dropped room.
+        phase = ConnectionPhase.Disconnected
         room.disconnect()
         phase = ConnectionPhase.Disconnected
+    }
+
+    /** Reconnect after a drop with backoff (2 s doubling to 30 s) while wanted. */
+    private fun scheduleReconnect() {
+        if (!wantsConnection || reconnectJob != null) return
+        val delayMs = minOf(30_000L, 2_000L shl minOf(reconnectAttempt, 4))
+        reconnectAttempt += 1
+        reconnectJob = scope.launch {
+            delay(delayMs)
+            reconnectJob = null // see connect(): never cancel the running job
+            connect()
+        }
     }
 
     /** Final teardown; the manager must not be used afterwards. */
@@ -281,6 +328,10 @@ class RoomManager(
         keyRetryJob?.cancel()
         keyRetryJob = scope.launch {
             delay(6_000)
+            // Clear our own handle BEFORE connect(): it cancels keyRetryJob, and
+            // cancelling the coroutine we're running in would abort its token
+            // fetch — the awaiting-key retry could then never succeed.
+            keyRetryJob = null
             if (phase == ConnectionPhase.AwaitingKey) connect()
         }
     }
@@ -296,7 +347,19 @@ class RoomManager(
      * reconnect plaintext: frame encryption is fixed when the room connects.
      */
     private suspend fun handleRekey(epoch: Int) {
-        if (!e2eeActive || (epoch != 0 && epoch <= currentEpoch)) return
+        if (!e2eeActive) {
+            // Connected PLAINTEXT and the Home was just activated (the server
+            // broadcasts rekey on activation): frame encryption is fixed per
+            // connection, so reconnect — connect() then sets up the key.
+            if (epoch < 1 || phase != ConnectionPhase.Connected) return
+            val resp = try { api.homeKey(homeId) } catch (e: CancellationException) { throw e } catch (_: Exception) { return }
+            if (resp.epoch >= 1 && !e2eeActive && phase == ConnectionPhase.Connected) {
+                disconnect()
+                connect()
+            }
+            return
+        }
+        if (epoch != 0 && epoch <= currentEpoch) return
         try {
             val resp = api.homeKey(homeId)
             if (resp.epoch == 0) {
@@ -535,8 +598,11 @@ class RoomManager(
         return cameraPub?.second as? VideoTrack
     }
 
-    private fun handleData(data: ByteArray) {
-        when (val message: DataMessage? = ForesightCodec.decode(data)) {
+    private fun handleData(data: ByteArray, sender: Participant?) {
+        val decoded = ForesightCodec.decode(data) ?: return
+        // Only camera X may report camera X's state/telemetry (no spoofing).
+        if (!Foresight.isAuthorizedSender(decoded, sender?.identity?.value)) return
+        when (val message: DataMessage = decoded) {
             is StateMessage -> camerasById[message.cameraId]?.apply(message)
             is TelemetryMessage -> camerasById[message.cameraId]?.apply(message)
             is RekeyMessage ->
@@ -552,7 +618,13 @@ class RoomManager(
     private suspend fun onRoomEvent(event: RoomEvent) {
         when (event) {
             is RoomEvent.Disconnected -> {
-                if (phase == ConnectionPhase.Connected) phase = ConnectionPhase.Disconnected
+                // A live room dropped (SDK gave up resuming, server/LiveKit
+                // restart): reconnect on our own. disconnect() marks the phase
+                // first, so an intentional teardown never lands here.
+                if (phase == ConnectionPhase.Connected) {
+                    phase = ConnectionPhase.Disconnected
+                    scheduleReconnect()
+                }
             }
 
             is RoomEvent.Reconnected -> reconcileParticipants()
@@ -608,7 +680,7 @@ class RoomManager(
                 }
             }
 
-            is RoomEvent.DataReceived -> handleData(event.data)
+            is RoomEvent.DataReceived -> handleData(event.data, event.participant)
 
             is RoomEvent.TrackE2EEStateEvent -> applyE2EEState(event.state, event.participant)
 
