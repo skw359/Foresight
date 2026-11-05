@@ -532,6 +532,9 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         req.log.debug({ ff: text }, "clip ffmpeg");
       });
       ff.on("error", (err) => {
+        // A spawn failure (bad FFMPEG_PATH) may emit only 'error', never
+        // 'close' — release the export slot here too (release is idempotent).
+        release();
         req.log.error({ err, ffmpeg: config.ffmpegPath }, "clip ffmpeg failed to start");
         body.destroy(err);
       });

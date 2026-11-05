@@ -71,6 +71,15 @@ function clientErrorCode(status: number): string {
 /** Shared error handler: HttpErrors → ApiError, framework 4xx passed through, unique violations → 409. */
 function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, _req, reply) => {
+    // A route may already have set a media type / attachment for a stream
+    // that then failed before any bytes went out (e.g. a clip export whose
+    // ffmpeg can't start). The error body is JSON, and must not be saved as
+    // "clip.mp4".
+    reply.removeHeader("content-disposition");
+    // Streams get their headers copied onto the raw response (setHeader)
+    // before piping; drop it there too while nothing has been sent.
+    if (!reply.raw.headersSent) reply.raw.removeHeader("content-disposition");
+    reply.type("application/json; charset=utf-8");
     if (err instanceof HttpError) {
       if (err.statusCode === 429) {
         const wait = (err.details as { retryAfterSeconds?: number } | undefined)?.retryAfterSeconds;
