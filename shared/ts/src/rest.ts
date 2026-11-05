@@ -83,6 +83,13 @@ export interface UserDTO {
   /** Optional display first name; absent/empty for accounts that never set one. */
   firstName?: string | null;
   createdAt: string;
+  /**
+   * True for the server administrator — the first account created on the
+   * server (or one promoted by an admin). Only admins may change server-wide
+   * settings such as the pairing URL and whether new accounts may register.
+   * Optional so older servers that predate the flag still decode.
+   */
+  isAdmin?: boolean;
 }
 
 export interface AuthResponse {
@@ -95,6 +102,26 @@ export interface AuthResponse {
    * generation and POSTs the vault to /me/keys.
    */
   keyVault: EncryptedKeyVault | null;
+}
+
+/**
+ * Body for POST /me/password — change the caller's login password. The E2EE
+ * vault is wrapped under the login password, so the client re-wraps its
+ * private key under the new password and sends the new vault in the same
+ * request; the server swaps both atomically. Every existing session token is
+ * revoked; the response carries a fresh one.
+ */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  /** The vault re-wrapped under `newPassword`. Required when the account has a vault. */
+  keyVault?: EncryptedKeyVault;
+}
+
+/** Response to POST /me/password and POST /auth/logout-all. */
+export interface SessionResponse {
+  /** A fresh session token (all older tokens are now rejected). */
+  token: string;
 }
 
 /**
@@ -125,12 +152,30 @@ export interface HomeDTO {
   keyEpoch: number;
   /** True when the recorder holds a sealed HMK copy at the current epoch. Computed, never stored. */
   recorderConsented: boolean;
+  /**
+   * True when a key holder lost access (member removed, camera deleted,
+   * account deleted) while E2EE was active, so the Home Media Key must be
+   * rotated before that holder's old copy stops decrypting new media. The
+   * owner's client rotates as soon as it can; the flag clears on rotate or
+   * disable. Optional for compatibility with servers that predate it.
+   */
+  keyRotationRequired?: boolean;
 }
 
 export interface AddMemberRequest {
   /** identifier of an existing user to add to the Home. */
   identifier: string;
+  /**
+   * Role for a NEW member (default "member"). For someone who is already a
+   * member it is applied only when given explicitly, and a change that would
+   * leave the Home without an owner is refused (409 last_owner).
+   */
   role?: MemberRole;
+}
+
+/** Body for PATCH /homes/:homeId/members/:userId (owner only). */
+export interface UpdateMemberRequest {
+  role: MemberRole;
 }
 
 /** A single member of a Home (returned by GET /homes/:homeId/members). */
@@ -331,7 +376,8 @@ export interface RtTokenResponse {
 /* --------------------------------------------------------------- Settings */
 
 /**
- * Server-wide settings editable from the dashboard by any signed-in user.
+ * Server-wide settings. Readable by any signed-in user; only the server admin
+ * (see UserDTO.isAdmin) may change them.
  */
 export interface ServerSettings {
   /**
@@ -347,12 +393,105 @@ export interface ServerSettings {
    * null.
    */
   detectedServerUrl: string;
+  /** Whether new accounts may currently register (POST /auth/register). */
+  registrationOpen?: boolean;
+  /**
+   * True when ALLOW_REGISTRATION in the server environment pins
+   * `registrationOpen`, so the dashboard toggle is read-only.
+   */
+  registrationLocked?: boolean;
+  /** True when the caller may change these settings (server admin). */
+  editable?: boolean;
 }
 
-/** Body for PUT /settings. */
+/** Body for PUT /settings (server admin only). Omitted fields are left unchanged. */
 export interface UpdateServerSettingsRequest {
   /** New override URL, or null/"" to clear it and fall back to auto-detect. */
-  pairingServerUrl: string | null;
+  pairingServerUrl?: string | null;
+  /** Allow or refuse new account registrations (ignored when pinned by env). */
+  registrationOpen?: boolean;
+}
+
+/* ------------------------------------------------------------------ Audit */
+
+/** Who performed an audited action. */
+export type AuditActorType = "user" | "camera" | "system";
+
+/**
+ * One entry of a Home's audit trail (GET /homes/:homeId/audit, owner only).
+ * Destructive and security-relevant actions are recorded: camera pairing and
+ * removal, recording toggles, footage deletion, membership and ownership
+ * changes, and E2EE key operations.
+ */
+export interface AuditEventDTO {
+  id: string;
+  homeId: string | null;
+  actorType: AuditActorType;
+  actorId: string | null;
+  /** Human-readable actor label (the identifier or camera name) when known. */
+  actorLabel: string | null;
+  /** Dotted action name, e.g. "camera.deleted", "recordings.deleted". */
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  details: unknown;
+  createdAt: string;
+}
+
+export interface AuditLogResponse {
+  events: AuditEventDTO[];
+  /** Pass as `?before=` to fetch the next (older) page; null when exhausted. */
+  nextBefore: string | null;
+}
+
+/* ------------------------------------------------------- Recording health */
+
+/** The recorder's live state for one camera (see foresight-recorder /status). */
+export type RecorderCameraState =
+  | "idle"
+  | "awaiting_track"
+  | "recording"
+  | "reacquiring"
+  | "stalled"
+  | "awaiting_consent"
+  | "revoked"
+  | "encoder_failing"
+  | "stopped";
+
+export interface CameraRecordingHealth {
+  cameraId: string;
+  /** null when the recorder has no session for this camera (not armed). */
+  state: RecorderCameraState | null;
+  /** Epoch ms when the encoder last finished a segment, or null if unknown. */
+  lastSegmentAt: number | null;
+  droppedFrames: number;
+}
+
+/** GET /homes/:homeId/recording-health. */
+export interface RecordingHealthResponse {
+  /** False when the recorder could not be reached (states are then unknown). */
+  recorderReachable: boolean;
+  cameras: CameraRecordingHealth[];
+}
+
+/* ------------------------------------------------------------ Clip export */
+
+/** POST /recordings/:cameraId/clip-url?from&to → a short-lived download URL. */
+export interface ClipUrlResponse {
+  /**
+   * Path (relative to the API base) of a signed, short-lived clip.mp4 URL that
+   * needs no Authorization header, so the browser can stream it straight to
+   * disk with a plain download link instead of buffering it in memory.
+   */
+  url: string;
+  expiresAt: string;
+}
+
+/* ------------------------------------------------------- Camera self-unpair */
+
+/** Body for POST /cameras/:cameraId/unpair — device-authenticated self-removal. */
+export interface UnpairCameraRequest {
+  deviceSecret: string;
 }
 
 /** Standard error body returned by the backend on 4xx/5xx. */

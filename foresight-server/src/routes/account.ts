@@ -20,13 +20,18 @@
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccountDeletionBlocked, UserDTO } from "@foresight/contract";
+import type { AccountDeletionBlocked, SessionResponse, UserDTO } from "@foresight/contract";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { requireUser } from "../auth.js";
-import { conflict } from "../lib/errors.js";
+import { hashPassword, requireUser, signSession, verifyPassword } from "../auth.js";
+import { badRequest, conflict, unauthorized } from "../lib/errors.js";
 import { toUserDTO } from "../lib/dto.js";
-import { parseBody } from "../lib/validate.js";
+import { PASSWORD_MAX, parseBody } from "../lib/validate.js";
+import { encryptedKeyVaultSchema } from "../lib/e2ee.js";
+import { enforce, limits } from "../lib/rateLimit.js";
 import { disarmRecording } from "../recorder-client.js";
+import { closeHomeRoom, evictUser } from "../livekit.js";
+import { audit, userActor } from "../lib/audit.js";
 
 const profileUpdate = z.object({
   // Trimmed; an empty string clears the stored name back to null.
@@ -38,7 +43,52 @@ const profileUpdate = z.object({
     .transform((v) => (v ? v : null)),
 });
 
+const changePassword = z.object({
+  currentPassword: z.string().min(1).max(PASSWORD_MAX),
+  newPassword: z.string().min(1, "new password is required").max(PASSWORD_MAX, "password is too long"),
+  keyVault: encryptedKeyVaultSchema.optional(),
+});
+
 export async function accountRoutes(app: FastifyInstance): Promise<void> {
+  // Change the login password. The E2EE vault is wrapped under the login
+  // password, so a client with a vault must send it re-wrapped under the new
+  // password (same public key); both are swapped atomically. Every existing
+  // session is revoked and a fresh token returned.
+  app.post("/me/password", { preHandler: requireUser }, async (req): Promise<SessionResponse> => {
+    const user = req.user!;
+    enforce(limits.reauthPerUser, user.id);
+    const { currentPassword, newPassword, keyVault } = parseBody(changePassword, req.body);
+    if (!(await verifyPassword(user.passwordHash, currentPassword))) {
+      throw unauthorized("Current password is incorrect");
+    }
+    if (user.publicKey) {
+      if (!keyVault) {
+        throw badRequest("Re-wrap your key vault under the new password and include it", "vault_required");
+      }
+      if (keyVault.publicKey !== user.publicKey) {
+        throw conflict("A password change must keep the same identity key", { reason: "vault_key_mismatch" });
+      }
+    }
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await hashPassword(newPassword),
+        tokenVersion: { increment: 1 },
+        ...(keyVault
+          ? {
+              publicKey: keyVault.publicKey,
+              wrappedPrivateKey: keyVault.wrappedPrivateKey,
+              keyNonce: keyVault.nonce,
+              keyKdf: keyVault.kdf as unknown as Prisma.InputJsonValue,
+            }
+          : {}),
+      },
+    });
+    limits.reauthPerUser.reset(user.id);
+    req.log.info({ userId: user.id }, "password changed — all sessions revoked");
+    return { token: signSession(updated) };
+  });
+
   // Update the caller's own profile (currently just the display first name).
   app.patch("/me", { preHandler: requireUser }, async (req): Promise<UserDTO> => {
     const { firstName } = parseBody(profileUpdate, req.body);
@@ -107,11 +157,38 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
     // sealed-key copies across ALL Homes are deleted explicitly first —
     // HomeKey.holderId has no FK so nothing cascades for surviving Homes (§4
     // lifecycle); the owner's client rotates those Homes afterwards.
+    // Surviving Homes where the user held an E2EE key need a rotation: their
+    // copy of the current key is deleted below, but they may still know it.
+    const deletedIds = new Set(soleOwnerEmpty.map((h) => h.id));
+    const surviving = memberships.map((m) => m.home).filter((h) => !deletedIds.has(h.id));
+    const rotate = surviving.filter((h) => h.keyEpoch >= 1).map((h) => h.id);
+
     await prisma.$transaction([
       prisma.homeKey.deleteMany({ where: { holderType: "user", holderId: userId } }),
+      ...(rotate.length
+        ? [prisma.home.updateMany({ where: { id: { in: rotate } }, data: { keyRotationRequired: true } })]
+        : []),
       ...soleOwnerEmpty.map((h) => prisma.home.delete({ where: { id: h.id } })),
       prisma.user.delete({ where: { id: userId } }),
     ]);
+
+    // LiveKit never re-checks access after joining: disconnect the deleted
+    // account's live sessions everywhere, and close the rooms of deleted Homes.
+    for (const h of surviving) {
+      await evictUser(h.id, userId, req.log);
+      await audit(
+        {
+          homeId: h.id,
+          actor: userActor(req.user!),
+          action: "member.account_deleted",
+          targetType: "user",
+          targetId: userId,
+          details: { identifier: req.user!.identifier },
+        },
+        req.log,
+      );
+    }
+    for (const h of soleOwnerEmpty) await closeHomeRoom(h.id, req.log);
 
     reply.code(204);
   });

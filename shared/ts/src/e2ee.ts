@@ -29,6 +29,23 @@
  * The server performs NO crypto with any of this: it stores/serves opaque
  * base64 blobs only. Sealing/unsealing/KDF happen exclusively on clients
  * (libsodium: libsodium-wrappers-sumo / swift-sodium / sodium-native).
+ *
+ * ── What E2EE does and does NOT protect against (read before relying on it) ──
+ * PROTECTS: media (video/audio frames) against the SFU operator (e.g. LiveKit
+ * Cloud) and anyone who obtains only the sealed-key blobs or the database's
+ * HomeKey table.
+ * DOES NOT PROTECT against a compromised or malicious Foresight server, nor
+ * against someone who can read the login traffic:
+ *   - the vault key is Argon2id(LOGIN PASSWORD), and the login password is sent
+ *     to the server at every login (in cleartext on a plain-HTTP LAN setup), so
+ *     whoever sees it can unwrap that user's vault;
+ *   - the server is the key directory: a malicious server can hand out its own
+ *     public key for a member/camera that a client has not pinned yet (TOFU
+ *     pins only catch a CHANGED key on a device that already pinned it);
+ *   - a database dump enables offline guessing of weak passwords against both
+ *     the login hash and the vault.
+ * Use TLS for the API, strong passwords, and compare key fingerprints out of
+ * band when it matters. See shared/E2EE.md for the full model.
  */
 
 /* ------------------------------------------------- LiveKit locked constants */
@@ -101,8 +118,10 @@ export interface KdfParams {
 
 /**
  * A user's identity keypair at rest: X25519 public key in the clear, private
- * key wrapped under Argon2id(password) via crypto_secretbox_easy. The server
- * stores this blob verbatim and can never open it.
+ * key wrapped under Argon2id(login password) via crypto_secretbox_easy. The
+ * server stores this blob verbatim and does no crypto with it — but because it
+ * also receives the login password at sign-in, it is NOT a party the vault is
+ * hidden from (see the threat-model note at the top of this file).
  */
 export interface EncryptedKeyVault {
   /** base64 X25519 public key (32 B). */
@@ -127,7 +146,7 @@ export interface SealedKey {
 
 /* ----------------------------------------------------- REST request/response
  * Route map (all session-authed unless noted):
- *   POST /me/keys                     body: EncryptedKeyVault        → 204
+ *   POST /me/keys                     body: SetKeyVaultRequest       → 204 (409 vault_exists when replacing a DIFFERENT existing vault without a correct currentPassword)
  *   GET  /me/keys                     → MeKeysResponse
  *   GET  /homes/:homeId/key           → HomeKeyResponse   (caller's own sealed copy)
  *   GET  /homes/:homeId/key/pending   → PendingKeyHoldersResponse
@@ -143,6 +162,16 @@ export interface SealedKey {
  *   POST /internal/recorder-identity  body: RegisterRecorderIdentityRequest → 204
  *   GET  /internal/recording-cameras  → RecorderReconcileResponse (extended)
  */
+
+/**
+ * Body of POST /me/keys. Creating the first vault needs only the session.
+ * REPLACING an existing, different vault also requires the account password
+ * (`currentPassword`) so a stolen session token alone cannot swap in an
+ * attacker's public key. Re-posting the identical vault is an idempotent 204.
+ */
+export interface SetKeyVaultRequest extends EncryptedKeyVault {
+  currentPassword?: string;
+}
 
 /** Response to GET /me/keys. `keyVault: null` ⇒ run first-login key generation. */
 export interface MeKeysResponse {
@@ -286,7 +315,12 @@ export interface RecorderHomeKeyInfo {
   epoch: number;
   /** base64 HMK sealed to the recorder's pubkey at `epoch`, or null (no consent → awaiting_consent). */
   sealedHmk: string | null;
-  /** True when consent was explicitly revoked (stop + finalize, don't just wait). */
+  /**
+   * True ONLY when the owner explicitly revoked recorder consent (stop +
+   * finalize, don't just wait). "Never consented" and "consented, but the
+   * post-rotation copy is not sealed yet" both report `revoked: false` with
+   * `sealedHmk: null` (awaiting_consent).
+   */
   revoked: boolean;
 }
 

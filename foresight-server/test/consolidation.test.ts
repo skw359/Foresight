@@ -9,6 +9,7 @@
  * Fixtures are throwaway mkdtemp trees whose day files carry DISTINCT byte
  * content per segment, so every slice/rewrite assertion is byte-verifiable.
  */
+import { TEST_LIVEKIT_SECRET, TEST_RECORDER_SECRET, applyTestEnv } from "./testEnv.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,10 +28,8 @@ import {
 // The lib imports src/config.ts, which fails fast on missing env — pin
 // deterministic values BEFORE the dynamic import below (dotenv never
 // overwrites pre-set values, so a developer .env can't leak in).
-process.env.JWT_SECRET = "test-secret";
+applyTestEnv();
 process.env.LIVEKIT_URL = "ws://localhost:7880";
-process.env.LIVEKIT_API_KEY = "devkey";
-process.env.LIVEKIT_API_SECRET = "secret";
 
 let lib: typeof import("../src/lib/recordings.js");
 

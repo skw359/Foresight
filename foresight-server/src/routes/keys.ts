@@ -1,12 +1,12 @@
 /**
- * E2EE key-management routes (E2EE_MODEL_B_PLAN.md §7.1). The route map is the
+ * E2EE key-management routes (shared/E2EE.md §7.1). The route map is the
  * canonical one documented at the top of the REST section in
  * shared/ts/src/e2ee.ts. THE SERVER DOES NO CRYPTO: every value handled here is
  * an opaque base64 blob it stores and serves. Validation is shape/size only
  * (lib/e2ee.ts). Sealing, unsealing, and key derivation happen exclusively on
  * clients.
  *
- *   POST /me/keys                       create/replace the caller's vault  → 204
+ *   POST /me/keys                       create the caller's vault (replacing a different one needs the password) → 204
  *   GET  /me/keys                       → MeKeysResponse
  *   GET  /homes/:homeId/key             → HomeKeyResponse (caller's own copy)
  *   GET  /homes/:homeId/key/pending     → PendingKeyHoldersResponse
@@ -33,13 +33,16 @@ import type {
 import { makeRekey } from "@foresight/contract";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { requireUser } from "../auth.js";
+import { requireUser, verifyPassword } from "../auth.js";
 import { toKeyVault } from "../lib/dto.js";
-import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, notFound, unauthorized } from "../lib/errors.js";
+import { audit, userActor } from "../lib/audit.js";
+import { enforce, limits } from "../lib/rateLimit.js";
+
 import { requireMember, requireOwner } from "../lib/membership.js";
 import { parseBody } from "../lib/validate.js";
 import {
-  encryptedKeyVaultSchema,
+  setKeyVaultSchema,
   holderTypeSchema,
   initHomeKeySchema,
   recorderConsentSchema,
@@ -216,10 +219,39 @@ async function computePending(homeId: string, keyEpoch: number): Promise<Pending
 
 export async function keyRoutes(app: FastifyInstance): Promise<void> {
   // -------------------------------------------------------------- /me/keys
+  // Create the caller's key vault, or replace it WITH PROOF. A first vault
+  // needs only the session (first-login key generation). Replacing an existing,
+  // DIFFERENT vault also needs the account password: otherwise a stolen session
+  // token alone could install an attacker's public key, and members' clients
+  // that haven't pinned this user yet would seal the Home key to it.
   app.post("/me/keys", { preHandler: requireUser }, async (req, reply): Promise<void> => {
-    const vault = parseBody(encryptedKeyVaultSchema, req.body);
+    const { currentPassword, ...vault } = parseBody(setKeyVaultSchema, req.body);
+    const user = req.user!;
+    const existing = toKeyVault(user);
+    const identical =
+      existing !== null &&
+      existing.publicKey === vault.publicKey &&
+      existing.wrappedPrivateKey === vault.wrappedPrivateKey &&
+      existing.nonce === vault.nonce;
+    if (identical) {
+      reply.code(204);
+      return;
+    }
+    if (existing !== null) {
+      if (!currentPassword) {
+        throw conflict("A key vault already exists; confirm your password to replace it", {
+          reason: "vault_exists",
+        });
+      }
+      enforce(limits.reauthPerUser, user.id);
+      if (!(await verifyPassword(user.passwordHash, currentPassword))) {
+        throw unauthorized("Password is incorrect");
+      }
+      limits.reauthPerUser.reset(user.id);
+      req.log.warn({ userId: user.id, keyChanged: existing.publicKey !== vault.publicKey }, "key vault replaced");
+    }
     await prisma.user.update({
-      where: { id: req.user!.id },
+      where: { id: user.id },
       data: {
         publicKey: vault.publicKey,
         wrappedPrivateKey: vault.wrappedPrivateKey,
@@ -284,6 +316,9 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     await assertHoldersValid(homeId, keys);
     await assertSealAuthority(role, homeId, keys);
     await prisma.$transaction(upsertKeyOps(homeId, epoch, keys, req.user!.id));
+    // A backfilled recorder copy is the recorder's cue to resume: nudge it now
+    // rather than leaving recording held until the next periodic reconcile.
+    if (keys.some((k) => k.holderType === "recorder")) void rekeyRecorder(homeId, epoch, req.log);
     reply.code(204);
   });
 
@@ -313,6 +348,17 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       await prisma.homeKey.deleteMany({
         where: { homeId, epoch: home.keyEpoch, holderType: parsed.data, holderId },
       });
+      await audit(
+        {
+          homeId,
+          actor: userActor(req.user!),
+          action: "e2ee.key_copy_dropped",
+          targetType: parsed.data,
+          targetId: holderId,
+          details: { epoch: home.keyEpoch },
+        },
+        req.log,
+      );
       reply.code(204);
     },
   );
@@ -357,9 +403,21 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       // 1 for a first activation; after a disable, one past the last epoch used.
       const epoch = home.lastKeyEpoch + 1;
       await prisma.$transaction([
-        prisma.home.update({ where: { id: homeId }, data: { keyEpoch: epoch } }),
+        prisma.home.update({ where: { id: homeId }, data: { keyEpoch: epoch, keyRotationRequired: false } }),
         ...upsertKeyOps(homeId, epoch, keys, req.user!.id),
       ]);
+      // Tell every CONNECTED participant. Cameras and viewers in the room are
+      // publishing/subscribing in plaintext, and frame encryption is fixed when
+      // a room connects: without this they would keep streaming plaintext until
+      // some unrelated reconnect — possibly weeks for a stationary camera —
+      // while the Home is shown as encrypted. Sent by the server so it doesn't
+      // depend on the owner's own room connection.
+      void broadcastToHome(homeId, makeRekey(epoch), req.log);
+      void rekeyRecorder(homeId, epoch, req.log);
+      await audit(
+        { homeId, actor: userActor(req.user!), action: "e2ee.activated", details: { epoch, holders: keys.length } },
+        req.log,
+      );
       return { keyEpoch: epoch };
     },
   );
@@ -384,13 +442,40 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
 
       await assertHoldersValid(homeId, keys);
 
+      // With recorder consent in force, the new epoch MUST carry the recorder's
+      // copy. Committing an epoch the recorder can't open would stall 24/7
+      // recording until a later backfill — a footage gap on every rotation.
+      const recorderRow = await prisma.homeKey.findFirst({
+        where: { homeId, epoch: home.keyEpoch, holderType: "recorder" },
+        select: { holderId: true },
+      });
+      if (recorderRow && !keys.some((k) => k.holderType === "recorder")) {
+        throw conflict("Include the recorder's sealed copy when rotating a Home with recorder consent", {
+          reason: "recorder_key_required",
+          recorderId: recorderRow.holderId,
+        });
+      }
+
       const newEpoch = home.keyEpoch + 1;
       await prisma.$transaction([
-        prisma.home.update({ where: { id: homeId }, data: { keyEpoch: newEpoch } }),
+        prisma.home.update({ where: { id: homeId }, data: { keyEpoch: newEpoch, keyRotationRequired: false } }),
         ...upsertKeyOps(homeId, newEpoch, keys, req.user!.id),
       ]);
+      // Every connected participant must re-fetch its sealed copy — sent by the
+      // server so a rotation never depends on the rotating client being in the
+      // room (otherwise cameras keep the OLD key while viewers fetch the new one).
+      void broadcastToHome(homeId, makeRekey(newEpoch), req.log);
       // Best-effort nudge so the recorder re-fetches its sealed key immediately.
       void rekeyRecorder(homeId, newEpoch, req.log);
+      await audit(
+        {
+          homeId,
+          actor: userActor(req.user!),
+          action: "e2ee.rotated",
+          details: { fromEpoch, toEpoch: newEpoch, holders: keys.length },
+        },
+        req.log,
+      );
       return { keyEpoch: newEpoch };
     },
   );
@@ -414,7 +499,10 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       await prisma.$transaction([
-        prisma.home.update({ where: { id: homeId }, data: { keyEpoch: 0, lastKeyEpoch: home.keyEpoch } }),
+        prisma.home.update({
+          where: { id: homeId },
+          data: { keyEpoch: 0, lastKeyEpoch: home.keyEpoch, keyRotationRequired: false },
+        }),
         prisma.homeKey.deleteMany({ where: { homeId } }),
       ]);
       // Cameras, viewers and the recorder are connected with frame encryption,
@@ -422,6 +510,10 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       // the switch doesn't depend on the owner's own room connection.
       void broadcastToHome(homeId, makeRekey(0), req.log);
       void rekeyRecorder(homeId, 0, req.log);
+      await audit(
+        { homeId, actor: userActor(req.user!), action: "e2ee.disabled", details: { lastEpoch: home.keyEpoch } },
+        req.log,
+      );
       return { keyEpoch: 0 };
     },
   );
@@ -467,6 +559,12 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
           },
           update: {},
         });
+        await prisma.home.update({ where: { id: homeId }, data: { recorderConsentRevokedAt: null } });
+        void rekeyRecorder(homeId, home.keyEpoch, req.log);
+        await audit(
+          { homeId, actor: userActor(req.user!), action: "recorder_consent.granted", details: { epoch: home.keyEpoch } },
+          req.log,
+        );
         return { recorderConsented: true, keyEpoch: home.keyEpoch };
       }
 
@@ -480,9 +578,19 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
       await prisma.$transaction([
         prisma.homeKey.deleteMany({ where: { homeId, holderType: "recorder" } }),
         prisma.camera.updateMany({ where: { homeId }, data: { recordingEnabled: false } }),
+        prisma.home.update({ where: { id: homeId }, data: { recorderConsentRevokedAt: new Date() } }),
       ]);
       for (const c of recordingCams) void disarmRecording(homeId, c.id, req.log);
       void revokeRecorder(homeId, req.log);
+      await audit(
+        {
+          homeId,
+          actor: userActor(req.user!),
+          action: "recorder_consent.revoked",
+          details: { camerasDisarmed: recordingCams.length },
+        },
+        req.log,
+      );
       return { recorderConsented: false, keyEpoch: home.keyEpoch };
     },
   );

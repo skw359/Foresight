@@ -1,6 +1,6 @@
 /**
  * Server-side HomeKey lookups. These read row EXISTENCE only — the sealed bytes
- * are never inspected (the server is zero-knowledge; see E2EE_MODEL_B_PLAN.md
+ * are never inspected (the server is zero-knowledge; see shared/E2EE.md
  * §7.1). Recorder consent is modelled as "a HomeKey row with holderType
  * 'recorder' exists at the Home's current epoch" (§4) — computed, never stored.
  */

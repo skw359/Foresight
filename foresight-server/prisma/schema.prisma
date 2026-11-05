@@ -17,8 +17,14 @@ model User {
   /// Optional display first name, shown in greetings; editable in Settings.
   firstName    String?
   createdAt    DateTime @default(now())
+  /// Server administrator: may change server-wide settings (pairing URL,
+  /// registration). The first account created on a server becomes the admin.
+  isAdmin      Boolean  @default(false)
+  /// Embedded in every session JWT; bumping it (logout everywhere, password
+  /// change) revokes every token issued before.
+  tokenVersion Int      @default(0)
 
-  // --- E2EE identity vault (opaque to the server; see E2EE_MODEL_B_PLAN.md §4).
+  // --- E2EE identity vault (opaque to the server; see shared/E2EE.md §4).
   // The server stores these base64 blobs verbatim and never decrypts them.
   /// b64 X25519 public key (null until the user sets up keys).
   publicKey         String?
@@ -47,10 +53,21 @@ model Home {
   /// and a reused number would serve a stale key.
   lastKeyEpoch Int @default(0)
 
+  /// Set when a key holder lost access while E2EE was active (member removed,
+  /// camera deleted, account deleted): the owner's client must rotate the HMK.
+  /// Cleared by key/rotate and key/disable.
+  keyRotationRequired Boolean @default(false)
+
+  /// When the owner last REVOKED recorder consent (null = never, or consent was
+  /// granted again since). Distinguishes "revoked" from "never consented" /
+  /// "rotation backfill pending" in the recorder reconcile.
+  recorderConsentRevokedAt DateTime?
+
   members         HomeMember[]
   cameras         Camera[]
   pairingSessions PairingSession[]
   homeKeys        HomeKey[]
+  auditEvents     AuditEvent[]
 }
 
 /// Join table: which users belong to which Homes, and their role.
@@ -71,7 +88,16 @@ model Camera {
   id               String    @id @default(cuid())
   homeId           String
   name             String
+  /// argon2 hash of the device secret (legacy verification path).
   deviceSecretHash String
+  /// SHA-256 (hex) of the 256-bit random device secret, for an O(1) indexed
+  /// lookup without an argon2 scan. Null for cameras paired before this column
+  /// existed; filled in on their first successful legacy verification.
+  deviceSecretSha256 String? @unique
+  /// LiveKit participant SID of the camera's current session, so a late
+  /// participant_left for an older session cannot mark a reconnected camera
+  /// offline.
+  livekitSid       String?
   online           Boolean   @default(false)
   /// When true, the recorder captures this camera 24/7 while it is online.
   recordingEnabled Boolean   @default(false)
@@ -88,6 +114,27 @@ model Camera {
   home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
 
   @@index([homeId])
+}
+
+/// Audit trail of destructive and security-relevant actions, per Home (homeId
+/// null for server-wide actions). Readable by the Home's owners.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  homeId     String?
+  /// "user" | "camera" | "system"
+  actorType  String
+  actorId    String?
+  /// Identifier / camera name at the time of the action (actors may be deleted later).
+  actorLabel String?
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  home Home? @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId, createdAt])
 }
 
 /// Server-wide key/value settings, editable at runtime from the dashboard.
@@ -123,7 +170,7 @@ model PairingSession {
 /// NO foreign key, so nothing cascades from those rows. The Home relation DOES
 /// cascade (deleting a Home removes its keys). Holder cleanup on member removal,
 /// camera deletion, account deletion, and recorder-consent revoke is explicit —
-/// see E2EE_MODEL_B_PLAN.md §4.
+/// see shared/E2EE.md §4.
 model HomeKey {
   id         String   @id @default(cuid())
   homeId     String

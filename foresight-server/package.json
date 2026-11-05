@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Foresight Security backend — accounts, Homes, cameras, QR pairing, LiveKit token minting, webhooks.",
+  "description": "Foresight Security backend \u2014 accounts, Homes, cameras, QR pairing, LiveKit token minting, webhooks.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "prebuild": "prisma generate",
@@ -12,7 +12,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prisma:deploy": "prisma migrate deploy",
+    "backup": "node scripts/backup-db.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
