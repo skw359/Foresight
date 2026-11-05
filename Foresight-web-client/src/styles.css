@@ -1,11 +1,11 @@
 /* Foresight Security — light dashboard theme.
  *
  * Palette:  #f4f4f6  page canvas
- *           #ffffff  elevated cards / surfaces (added for contrast)
+ *           #ffffff  elevated cards / surfaces
  *           #e7e7e7  secondary buttons, inputs, chips
  *           #d2d2d4  borders
  *           #ff634a  coral — primary / active accent
- *           #1d1d1f  near-black text (added for contrast)
+ *           #1d1d1f  near-black text
  *
  * Interaction model: press-heavy. The ONLY hover effect anywhere is a slight
  * darken (a black overlay) that deepens further on :active — nothing lifts,
@@ -58,25 +58,18 @@
   color-scheme: light;
 }
 
-/* ---------------------------------------------------------------- dark theme
+/* ---- dark theme
  *
- * System-wide dark palette, opted into from Settings. The ThemeProvider writes
- * data-theme="dark" onto <html> (see api/theme.ts), and because every component
- * paints from the tokens above, redefining them here repaints the whole app at
- * once — no per-component changes needed.
+ * Opted into from Settings: ThemeProvider writes data-theme="dark" onto <html>
+ * (see api/theme.ts). Every component paints from the tokens above, so
+ * redefining them here repaints the whole app.
  *
- * Colors are lifted from the sign-in screen's self-contained dark palette (the
- * `.login-screen` --lp-* tokens) so the logged-in app matches the auth screen:
- *
- *   #050506  page canvas        (lp-bg-body)
- *   #0d0d0f  elevated surfaces  (lp-bg-card)
- *   #1a1a1c  inputs / chips      (lp-bg-input)
- *   #2a2a2d  borders             (lp-border)
- *   #ff634a  coral accent        (unchanged across themes)
+ * Colors come from the sign-in screen's `.login-screen` --lp-* palette
+ * (canvas #050506, surfaces #0d0d0f, inputs/chips #1a1a1c, borders #2a2a2d);
+ * the coral accent is unchanged.
  *
  * `:root[data-theme="dark"]` outranks `:root` on specificity, so it wins
- * regardless of source order. Light remains the default when the attribute is
- * absent.
+ * regardless of source order.
  */
 :root[data-theme="dark"] {
   --bg: #050506;
@@ -184,7 +177,7 @@ button {
   vertical-align: -0.18em;
 }
 
-/* ---------------------------------------------------------------- layout */
+/* layout */
 
 .app-shell {
   min-height: 100%;
@@ -247,15 +240,12 @@ button {
   padding-right: 4px;
 }
 
-/* ----------------------------------------------- top navigation progress bar
+/* ---- top navigation progress bar
  *
- * A glowing orange strip pinned to the bottom edge of the (sticky) TopBar,
- * shown while a page loads on navigation. The fill (transform: scaleX) +
- * opacity are animated from JS (see components/NavProgress + context/
- * navProgress); only the static look lives here. Absolutely positioned, so it
- * never affects header layout, and non-interactive. The bar sits idle at
- * opacity 0 — start() reveals it — so the box-shadow glow can't leak as a line
- * while collapsed to scaleX(0).
+ * Pinned to the bottom edge of the (sticky) TopBar; the fill (transform:
+ * scaleX) and opacity are animated from JS (see components/NavProgress). The
+ * bar sits idle at opacity 0 so the box-shadow glow can't leak as a line while
+ * collapsed to scaleX(0).
  */
 .nav-progress {
   position: absolute;
@@ -329,19 +319,16 @@ button {
   padding-top: 0;
 }
 
-/* ---------------------------------------------------------------- auth
+/* ---- auth
  *
- * The sign-in / register screen replicates Journey's dark, two-panel split
- * card, recolored to Foresight's coral accent. It is intentionally
- * self-contained: a local dark palette is declared on `.login-screen` so none
- * of the global light-theme tokens leak in, and every input / button / error
- * rule is scoped under `.login-screen` so the rest of the (light) app is left
- * untouched. The TopBar is hidden on the auth routes (see App.tsx), so this
- * panel owns the whole viewport.
+ * Self-contained dark two-panel card: a local dark palette is declared on
+ * `.login-screen` so none of the global light-theme tokens leak in, and every
+ * rule is scoped under it. The TopBar is hidden on the auth routes (see
+ * App.tsx), so this panel owns the whole viewport.
  *
- * Left  ("visual-side") — animated coral line-graph (VisualCanvas) over a
- *                         layered gradient, with a headline + footer.
- * Right ("form-side")   — logo, heading, placeholder inputs, primary button.
+ * Left  ("visual-side") — animated line-graph (VisualCanvas) over a gradient,
+ *                         with a headline + footer.
+ * Right ("form-side")   — logo, heading, inputs, primary button.
  */
 
 .login-screen {
@@ -679,7 +666,7 @@ button {
   }
 }
 
-/* ---------------------------------------------------------------- forms */
+/* forms */
 
 .field {
   margin-bottom: 18px;
@@ -733,7 +720,7 @@ code {
   border-radius: 6px;
 }
 
-/* ---------------------------------------------------------------- buttons */
+/* buttons */
 
 .btn {
   display: inline-flex;
@@ -905,12 +892,10 @@ code {
   font-weight: 660;
 }
 
-/* ------------------------------------------------------- settings page tabs
+/* ---- settings page tabs
  *
- * Section switcher for the Home Settings page (General | Security). Follows
- * the press-heavy interaction model: hover/press is the same darken overlay
- * as everywhere else (::before), and the ONLY active marker is a coral rail
- * sitting on the divider (::after) — nothing lifts or glows.
+ * Hover/press is the shared darken overlay (::before); the ONLY active marker
+ * is a coral rail on the divider (::after).
  */
 .tabs {
   display: flex;
@@ -973,7 +958,7 @@ code {
   max-width: 760px;
 }
 
-/* ---------------------------------------------------------------- misc */
+/* misc */
 
 .error-box {
   background: #d90000;
@@ -1123,7 +1108,7 @@ code {
   color: var(--text-dim);
 }
 
-/* ------------------------------------------------------------- home cards */
+/* home cards */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -1233,7 +1218,7 @@ code {
   text-transform: capitalize;
 }
 
-/* ------------------------------------------------------------ camera grid */
+/* camera grid */
 .camera-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1241,7 +1226,7 @@ code {
   margin-top: 22px;
 }
 
-/* ------------------------------------------------------------ camera tile */
+/* camera tile */
 .tile {
   position: relative;
   background: var(--surface);
@@ -1306,7 +1291,7 @@ code {
   min-width: 0;
 }
 
-/* --------------------------------------------------------- video overlays */
+/* video overlays */
 .nofeed-overlay,
 .offline-overlay {
   position: absolute;
@@ -1343,7 +1328,7 @@ code {
   right: auto;
 }
 
-/* ------------------------------------------------------- full-screen view */
+/* full-screen view */
 .fs-layout {
   display: flex;
   flex-direction: column;
@@ -1396,7 +1381,7 @@ code {
   z-index: 3;
 }
 
-/* --------------------------------------------- video controls (hover bar) */
+/* video controls (hover bar) */
 .video-controls-overlay {
   position: absolute;
   left: 0;
@@ -1559,7 +1544,7 @@ code {
   white-space: nowrap;
 }
 
-/* ------------------------------------------------------------------ modal */
+/* modal */
 
 /* Backdrop — darkens + blurs the page behind the dialog */
 .modal-backdrop {
@@ -1613,7 +1598,7 @@ body.modal-open .app-shell {
   margin-top: 22px;
 }
 
-/* ------------------------------------------------------------- QR pairing */
+/* QR pairing */
 .qr-box {
   display: flex;
   flex-direction: column;
@@ -1642,7 +1627,7 @@ body.modal-open .app-shell {
   color: var(--text);
 }
 
-/* ----------------------------------------------------------- generic card */
+/* generic card */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1654,7 +1639,7 @@ body.modal-open .app-shell {
   gap: 14px;
 }
 
-/* --------------------------------------------------- health badges (overlay) */
+/* health badges (overlay) */
 .badges {
   display: flex;
   align-items: center;
@@ -1705,7 +1690,7 @@ body.modal-open .app-shell {
   background: #fff;
 }
 
-/* ------------------------------------- connection status dot (shared) */
+/* connection status dot (shared) */
 .status-dot {
   width: 7px;
   height: 7px;
@@ -1730,7 +1715,7 @@ body.modal-open .app-shell {
   background: var(--border-strong);
 }
 
-/* ------------------------------------------- home presence (HomePage header) */
+/* home presence (HomePage header) */
 /* Shield = E2EE Home, dot = plaintext Home; color tracks the room connection. */
 .home-presence {
   display: inline-flex;
@@ -1763,7 +1748,7 @@ body.modal-open .app-shell {
   color: var(--warn);
 }
 
-/* --------------------------------------------------- command toast */
+/* command toast */
 .cmd-toast {
   position: fixed;
   bottom: 28px;
@@ -1798,7 +1783,7 @@ body.modal-open .app-shell {
   }
 }
 
-/* ----------------------------------------------------------- status pills */
+/* status pills */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1819,7 +1804,7 @@ body.modal-open .app-shell {
   color: #fff;
 }
 
-/* ------------------------------------------------------------- dev camera */
+/* dev camera */
 .dev-camera-live {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1884,7 +1869,7 @@ body.modal-open .app-shell {
   }
 }
 
-/* ------------------------------------------------------------- Recordings */
+/* Recordings */
 .rec-panel {
   margin-top: 16px;
   border: 1px solid var(--border);
@@ -1968,7 +1953,7 @@ body.modal-open .app-shell {
   color: #fff;
 }
 
-/* ------------------------------------------------ Recordings list */
+/* Recordings list */
 .rec-list {
   list-style: none;
   margin: 0;
