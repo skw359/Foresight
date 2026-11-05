@@ -6,3 +6,7 @@ prisma/dev.db-journal
 prisma/*.db
 prisma/*.db-journal
 *.log
+backups/
+*.db
+*.db-wal
+*.db-shm

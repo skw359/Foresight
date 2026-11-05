@@ -3,6 +3,7 @@
  * (the backend only MINTS tokens, it never opens a media socket). Runs against
  * an isolated temp SQLite DB built by replaying the init migration.
  */
+import { TEST_LIVEKIT_SECRET, TEST_RECORDER_SECRET, applyTestEnv } from "./testEnv.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -32,13 +33,11 @@ const migrationFiles = readdirSync(migrationsDir)
 const dbDir = mkdtempSync(join(tmpdir(), "foresight-test-"));
 const dbPath = join(dbDir, "test.db");
 process.env.DATABASE_URL = `file:${dbPath}`;
-process.env.JWT_SECRET = "test-secret";
+applyTestEnv();
 process.env.LIVEKIT_URL = "ws://localhost:7880";
 // Pin the advertised URL so the pairing-ticket assertion is hermetic and does
 // not pick up a developer .env's real LIVEKIT_PUBLIC_URL via dotenv.
 process.env.LIVEKIT_PUBLIC_URL = "ws://localhost:7880";
-process.env.LIVEKIT_API_KEY = "devkey";
-process.env.LIVEKIT_API_SECRET = "secret";
 process.env.PUBLIC_SERVER_URL = "http://localhost:3199";
 // Isolated on-disk segment tree so the recordings delete test can write + prune
 // real segment files without touching the dev recordings dir.
@@ -76,6 +75,9 @@ afterAll(async () => {
 
 const json = (res: { json: () => unknown }) => res.json();
 
+/** Session of the first account registered in this suite — the server admin. */
+let adminToken = "";
+
 // A valid base64 32-byte X25519 public key for /pair/claim (now required).
 const CAMERA_PUBKEY = Buffer.alloc(32, 7).toString("base64");
 
@@ -87,9 +89,12 @@ describe("auth", () => {
       payload: { identifier: "alice@example.com", password: "anything" },
     });
     expect(reg.statusCode).toBe(201);
-    const body = json(reg) as { token: string; user: { identifier: string } };
+    const body = json(reg) as { token: string; user: { identifier: string; isAdmin: boolean } };
     expect(body.token).toBeTruthy();
     expect(body.user.identifier).toBe("alice@example.com");
+    // First account on the server becomes its administrator.
+    expect(body.user.isAdmin).toBe(true);
+    adminToken = body.token;
 
     const dup = await app.inject({
       method: "POST",
@@ -218,7 +223,7 @@ describe("full flow: home → pair → claim → rt token", () => {
     expect(body.room).toBe(`home:${homeId}`);
     expect(body.identity.startsWith("user:")).toBe(true);
 
-    const decoded = jwt.verify(body.token, "secret") as Record<string, unknown>;
+    const decoded = jwt.verify(body.token, TEST_LIVEKIT_SECRET) as Record<string, unknown>;
     const video = decoded.video as { room: string; roomJoin: boolean; canSubscribe: boolean; canPublishData: boolean };
     expect(video.room).toBe(`home:${homeId}`);
     expect(video.roomJoin).toBe(true);
@@ -237,7 +242,7 @@ describe("full flow: home → pair → claim → rt token", () => {
     expect(res.statusCode).toBe(200);
     const body = json(res) as { identity: string; token: string };
     expect(body.identity).toBe(`camera:${cameraId}`);
-    const decoded = jwt.verify(body.token, "secret") as Record<string, unknown>;
+    const decoded = jwt.verify(body.token, TEST_LIVEKIT_SECRET) as Record<string, unknown>;
     expect((decoded.video as { canPublish: boolean }).canPublish).toBe(true);
 
     const bad = await app.inject({
@@ -324,11 +329,22 @@ describe("server settings: pairing URL", () => {
     });
     expect((json(pair1) as { serverUrl: string }).serverUrl).toBe(s.detectedServerUrl);
 
-    // Set an explicit override.
-    const put = await app.inject({
+    // A regular account can read settings but NOT change them (SEC-01: the
+    // pairing URL goes into every Home's QR codes).
+    expect((json(before) as { editable: boolean }).editable).toBe(false);
+    const denied = await app.inject({
       method: "PUT",
       url: "/settings",
       headers: { authorization: `Bearer ${token}` },
+      payload: { pairingServerUrl: "http://attacker.example:3199" },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    // The server admin sets an explicit override.
+    const put = await app.inject({
+      method: "PUT",
+      url: "/settings",
+      headers: { authorization: `Bearer ${adminToken}` },
       payload: { pairingServerUrl: "http://192.168.1.42:3199" },
     });
     expect(put.statusCode).toBe(200);
@@ -348,7 +364,7 @@ describe("server settings: pairing URL", () => {
     const bad = await app.inject({
       method: "PUT",
       url: "/settings",
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${adminToken}` },
       payload: { pairingServerUrl: "not-a-url" },
     });
     expect(bad.statusCode).toBe(400);
@@ -357,7 +373,7 @@ describe("server settings: pairing URL", () => {
     const cleared = await app.inject({
       method: "PUT",
       url: "/settings",
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${adminToken}` },
       payload: { pairingServerUrl: null },
     });
     expect((json(cleared) as { pairingServerUrl: string | null }).pairingServerUrl).toBeNull();
@@ -516,8 +532,9 @@ describe("recordings: coverage + delete", () => {
     expect(live.headers["content-type"]).toContain("mpegurl");
     for (const epoch of recent) expect(live.body).toContain(`seg/${segmentName(epoch)}`);
     expect(live.body).not.toContain(segmentName(old));
-    // Wall-clock-derived media sequence (monotonic across pruning).
-    expect(live.body).toContain(`#EXT-X-MEDIA-SEQUENCE:${Math.floor(recent[0]! / 6)}`);
+    // Stable media sequence: (UTC day number × 100000) + the first listed
+    // segment's index within its day — it is the first of its day here.
+    expect(live.body).toContain(`#EXT-X-MEDIA-SEQUENCE:${Math.floor(recent[0]! / 86_400) * 100_000}`);
     expect(live.body).not.toContain("#EXT-X-ENDLIST");
 
     // Range mode walks the full tree (via the listing cache) → old + recent.

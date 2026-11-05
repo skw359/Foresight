@@ -4,6 +4,7 @@
  * imports the shared PrismaClient to set up edge cases (a camera with no pubkey)
  * and to assert row-level side effects (HomeKey cleanup, consent revoke).
  */
+import { TEST_LIVEKIT_SECRET, TEST_RECORDER_SECRET, applyTestEnv } from "./testEnv.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -22,14 +23,12 @@ const migrationFiles = readdirSync(migrationsDir)
 const dbDir = mkdtempSync(join(tmpdir(), "foresight-e2ee-"));
 const dbPath = join(dbDir, "test.db");
 process.env.DATABASE_URL = `file:${dbPath}`;
-process.env.JWT_SECRET = "test-secret";
+applyTestEnv();
 process.env.LIVEKIT_URL = "ws://localhost:7880";
-process.env.LIVEKIT_API_KEY = "devkey";
-process.env.LIVEKIT_API_SECRET = "secret";
 process.env.PUBLIC_SERVER_URL = "http://localhost:3199";
 // Enables the /internal/* routes and the fire-and-forget recorder control calls
 // (which harmlessly fail with ECONNREFUSED against a recorder that isn't running).
-process.env.RECORDER_SHARED_SECRET = "test-recorder-secret";
+process.env.RECORDER_SHARED_SECRET = TEST_RECORDER_SECRET;
 
 {
   const db = new DatabaseSync(dbPath);
@@ -49,17 +48,22 @@ vi.mock("../src/livekit.js", async (importOriginal) => ({
 }));
 
 let app: FastifyInstance;
+/** The loopback-only server↔recorder app (never mounted on the public one). */
+let internal: FastifyInstance;
 let prisma: Db;
 
 beforeAll(async () => {
   prisma = (await import("../src/db.js")).prisma;
-  const { buildApp } = await import("../src/app.js");
+  const { buildApp, buildInternalApp } = await import("../src/app.js");
   app = buildApp();
+  internal = buildInternalApp();
   await app.ready();
+  await internal.ready();
 });
 
 afterAll(async () => {
   await app.close();
+  await internal.close();
   await prisma.$disconnect();
   rmSync(dbDir, { recursive: true, force: true });
 });
@@ -67,7 +71,7 @@ afterAll(async () => {
 // --------------------------------------------------------------------- helpers
 const json = (res: { json: () => unknown }) => res.json();
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
-const RECORDER_SECRET = { "x-recorder-secret": "test-recorder-secret" };
+const RECORDER_SECRET = { "x-recorder-secret": TEST_RECORDER_SECRET };
 
 /** A base64 blob of exactly `bytes` bytes (deterministic by `fill`). */
 const b64 = (bytes: number, fill = 1) => Buffer.alloc(bytes, fill).toString("base64");
@@ -128,7 +132,7 @@ async function pairCamera(
 
 /** Register the global recorder identity (idempotent for the same key). */
 async function registerRecorder(fill: number) {
-  return app.inject({
+  return internal.inject({
     method: "POST",
     url: "/internal/recorder-identity",
     headers: RECORDER_SECRET,
@@ -657,7 +661,7 @@ describe("internal recorder API", () => {
   });
 
   it("rejects a bad recorder secret", async () => {
-    const res = await app.inject({
+    const res = await internal.inject({
       method: "GET",
       url: "/internal/recording-cameras",
       headers: { "x-recorder-secret": "nope" },
@@ -665,8 +669,20 @@ describe("internal recorder API", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("reconcile carries cameras + per-Home key state with the sealed HMK", async () => {
+  it("is not served by the public app at all, even with the right secret", async () => {
     const res = await app.inject({ method: "GET", url: "/internal/recording-cameras", headers: RECORDER_SECRET });
+    expect(res.statusCode).toBe(404);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/internal/recorder-identity",
+      headers: RECORDER_SECRET,
+      payload: { publicKey: b64(32, 66) },
+    });
+    expect(reg.statusCode).toBe(404);
+  });
+
+  it("reconcile carries cameras + per-Home key state with the sealed HMK", async () => {
+    const res = await internal.inject({ method: "GET", url: "/internal/recording-cameras", headers: RECORDER_SECRET });
     expect(res.statusCode).toBe(200);
     const body = json(res) as {
       cameras: { cameraId: string; homeId: string }[];
@@ -686,12 +702,13 @@ describe("internal recorder API", () => {
     const identity = await app.inject({ method: "GET", url: "/e2ee/recorder-identity", headers: auth(ownerTok) });
     expect((json(identity) as { publicKey: string | null }).publicKey).toBe(b64(32, 4));
 
-    // The reconcile now flags the Home as revoked (recording camera, no recorder row).
-    const res = await app.inject({ method: "GET", url: "/internal/recording-cameras", headers: RECORDER_SECRET });
+    // The new identity holds no key: the Home waits for re-consent
+    // (awaiting_consent). It is NOT reported as an owner revocation.
+    const res = await internal.inject({ method: "GET", url: "/internal/recording-cameras", headers: RECORDER_SECRET });
     const hk = (json(res) as { homeKeys: { homeId: string; sealedHmk: string | null; revoked: boolean }[] }).homeKeys.find(
       (h) => h.homeId === homeId,
     );
-    expect(hk?.revoked).toBe(true);
+    expect(hk?.revoked).toBe(false);
     expect(hk?.sealedHmk).toBeNull();
 
     // Re-registering the SAME (new) key is an idempotent no-op.

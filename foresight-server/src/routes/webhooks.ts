@@ -31,21 +31,45 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const identity = event.participant?.identity;
+    const sid = event.participant?.sid || null;
     const parsed = identity ? parseIdentity(identity) : null;
     if (parsed?.role === "camera") {
       if (event.event === "participant_joined") {
+        // Remember WHICH session is live: a reconnecting camera's new session
+        // can join before LiveKit reports the old one as left.
         const cam = await prisma.camera
-          .update({ where: { id: parsed.id }, data: { online: true, lastSeen: new Date() } })
+          .update({
+            where: { id: parsed.id },
+            data: { online: true, lastSeen: new Date(), livekitSid: sid },
+          })
           .catch(() => null);
         // Arm the recorder only when this camera opted into 24/7 recording.
         if (cam?.recordingEnabled) void armRecording(cam.homeId, cam.id, req.log);
       } else if (event.event === "participant_left") {
-        const cam = await prisma.camera
-          .update({ where: { id: parsed.id }, data: { online: false, lastSeen: new Date() } })
-          .catch(() => null);
-        // Always disarm on leave; a disarm for a camera that wasn't recording
-        // is a harmless no-op on the recorder.
-        if (cam) void disarmRecording(cam.homeId, cam.id, req.log);
+        // Only the CURRENT session leaving takes the camera offline. A late
+        // participant_left for an older session (duplicate-identity takeover on
+        // reconnect) matches no row and is ignored, so it can't mark a live
+        // camera offline or disarm its recording.
+        const res = await prisma.camera
+          .updateMany({
+            where: {
+              id: parsed.id,
+              ...(sid ? { OR: [{ livekitSid: sid }, { livekitSid: null }] } : {}),
+            },
+            data: { online: false, lastSeen: new Date(), livekitSid: null },
+          })
+          .catch(() => ({ count: 0 }));
+        if (res.count === 0) {
+          req.log.debug({ cameraId: parsed.id, sid }, "ignoring participant_left for a superseded session");
+        } else {
+          const cam = await prisma.camera.findUnique({
+            where: { id: parsed.id },
+            select: { id: true, homeId: true },
+          });
+          // Always disarm on leave; a disarm for a camera that wasn't recording
+          // is a harmless no-op on the recorder.
+          if (cam) void disarmRecording(cam.homeId, cam.id, req.log);
+        }
       }
     }
 

@@ -15,6 +15,25 @@ import { config } from "../config.js";
 /** Setting key for the pairing-ticket base URL override. */
 export const PAIRING_SERVER_URL_KEY = "pairing.serverUrl";
 
+/** Setting key for the admin's "allow new accounts" toggle ("true" / absent). */
+export const REGISTRATION_OPEN_KEY = "registration.open";
+
+/** Whether ALLOW_REGISTRATION pins the registration policy (dashboard toggle read-only). */
+export function registrationLocked(): boolean {
+  return config.allowRegistration !== null;
+}
+
+/**
+ * Whether new accounts may register right now. The env var wins; otherwise the
+ * admin's dashboard toggle, which defaults to CLOSED — an open signup on a
+ * security-camera server lets strangers in, and every member-level permission
+ * starts with an account.
+ */
+export async function registrationOpen(): Promise<boolean> {
+  if (config.allowRegistration !== null) return config.allowRegistration;
+  return (await getSetting(REGISTRATION_OPEN_KEY)) === "true";
+}
+
 /** Read a setting value, or null if it has never been set. */
 export async function getSetting(key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({ where: { key } });

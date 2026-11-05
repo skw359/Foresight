@@ -1,5 +1,8 @@
 /**
- * Loopback-only internal API for the foresight-recorder's reconcile loop.
+ * Internal API for the foresight-recorder's reconcile loop. Served ONLY by the
+ * separate loopback listener (buildInternalApp in app.ts, 127.0.0.1:INTERNAL_PORT),
+ * never by the public app — so neither the LAN nor a reverse proxy in front of
+ * the public port can reach it, whatever the shared secret.
  *
  * The recorder, on boot and periodically, asks "which cameras SHOULD be
  * recording right now?" and re-arms anything it is missing. The server owns the
@@ -7,7 +10,7 @@
  * file. Guarded by the same shared secret as the recorder control API; when no
  * secret is configured the routes report 404 (feature disabled).
  *
- * With E2EE (E2EE_MODEL_B_PLAN.md §8), the reconcile response also carries each
+ * With E2EE (shared/E2EE.md §8), the reconcile response also carries each
  * Home's key state so the recorder can unseal the HMK it was granted (or hold in
  * awaiting_consent / finalize on revoke). The recorder registers its public key
  * here on boot; a CHANGED key voids all prior consent (§8.3). The server stores
@@ -19,6 +22,7 @@ import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { parseBody } from "../lib/validate.js";
 import { recorderIdentitySchema } from "../lib/e2ee.js";
+import { secretsEqual } from "../lib/secrets.js";
 
 /**
  * Enforce the recorder shared secret. Returns true when the request may proceed;
@@ -30,7 +34,7 @@ function recorderAuthed(req: FastifyRequest, reply: FastifyReply): boolean {
     reply.code(404).send({ error: "not_found", message: "Internal API disabled" });
     return false;
   }
-  if (req.headers["x-recorder-secret"] !== secret) {
+  if (!secretsEqual(req.headers["x-recorder-secret"], secret)) {
     reply.code(401).send({ error: "unauthorized", message: "Invalid recorder secret" });
     return false;
   }
@@ -55,13 +59,18 @@ export async function internalRoutes(app: FastifyInstance): Promise<void> {
 
     // Per-Home key state for every Home present in `cameras`. epoch = keyEpoch;
     // sealedHmk = the recorder's sealed copy at the current epoch (or null →
-    // awaiting_consent); revoked = activated Home with recording-enabled cameras
-    // but no current recorder row (consent lost → finalize + stop, don't wait).
+    // awaiting_consent); revoked = the owner EXPLICITLY revoked consent (finalize
+    // + stop). "Never consented" and "rotation backfill not done yet" are NOT
+    // revocations — they report awaiting_consent so the recorder doesn't treat
+    // every key rotation as a revoke.
     const homeIds = [...new Set(cams.map((c) => c.homeId))];
     let homeKeys: RecorderHomeKeyInfo[] = [];
     if (homeIds.length) {
       const [homes, recorderRows] = await Promise.all([
-        prisma.home.findMany({ where: { id: { in: homeIds } }, select: { id: true, keyEpoch: true } }),
+        prisma.home.findMany({
+          where: { id: { in: homeIds } },
+          select: { id: true, keyEpoch: true, recorderConsentRevokedAt: true },
+        }),
         prisma.homeKey.findMany({
           where: { holderType: "recorder", homeId: { in: homeIds } },
           select: { homeId: true, epoch: true, sealedKey: true },
@@ -73,7 +82,7 @@ export async function internalRoutes(app: FastifyInstance): Promise<void> {
           homeId: h.id,
           epoch: h.keyEpoch,
           sealedHmk: current?.sealedKey ?? null,
-          revoked: h.keyEpoch >= 1 && !current,
+          revoked: h.keyEpoch >= 1 && !current && h.recorderConsentRevokedAt !== null,
         };
       });
     }

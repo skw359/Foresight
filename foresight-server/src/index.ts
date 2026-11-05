@@ -1,10 +1,12 @@
 /**
- * Foresight Security backend entrypoint. Boots the Fastify app and listens on
- * all interfaces (0.0.0.0) so iPhones and browsers on the LAN can reach it.
+ * Foresight Security backend entrypoint. Boots the public Fastify app on all
+ * interfaces (0.0.0.0) so iPhones and browsers on the LAN can reach it, and the
+ * internal server↔recorder API on 127.0.0.1 only.
  */
 import os from "node:os";
-import { buildApp } from "./app.js";
-import { config } from "./config.js";
+import { buildApp, buildInternalApp } from "./app.js";
+import { config, insecureWarnings } from "./config.js";
+import { prisma } from "./db.js";
 import { banner } from "./console.js";
 import { isPretty } from "./logging.js";
 
@@ -47,17 +49,50 @@ function announceBoot(app: ReturnType<typeof buildApp>): void {
       label: "recorder",
       value: config.recorderSharedSecret ? config.recorderUrl : "disabled (no shared secret)",
     },
+    ...(config.recorderSharedSecret
+      ? [{ label: "internal", value: `http://127.0.0.1:${config.internalPort} (loopback only)` }]
+      : []),
   ];
 
   process.stdout.write(banner({ subtitle: "server", rows }) + "\n\n");
 }
 
+/**
+ * SQLite tuning for a long-running server: WAL lets readers (playlist/coverage
+ * requests) proceed while a write commits, and survives a crash mid-write
+ * better than the rollback journal. busy_timeout rides out brief contention
+ * (e.g. a backup) instead of failing the request.
+ */
+async function tuneSqlite(app: ReturnType<typeof buildApp>): Promise<void> {
+  try {
+    await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL");
+    await prisma.$queryRawUnsafe("PRAGMA busy_timeout=5000");
+  } catch (err) {
+    app.log.warn({ err: String(err) }, "could not enable SQLite WAL mode");
+  }
+}
+
 const app = buildApp({ logger: true });
 
-app
-  .listen({ port: config.port, host: "0.0.0.0" })
-  .then(() => announceBoot(app))
-  .catch((err) => {
-    app.log.error(err);
-    process.exit(1);
-  });
+for (const warning of insecureWarnings) {
+  app.log.warn(`INSECURE (FORESIGHT_INSECURE_DEV=1): ${warning}`);
+}
+
+async function main(): Promise<void> {
+  await tuneSqlite(app);
+  await app.listen({ port: config.port, host: "0.0.0.0" });
+  announceBoot(app);
+
+  // The recorder's reconcile API: loopback only, and only when a shared secret
+  // is configured (otherwise server↔recorder calls are disabled anyway).
+  if (config.recorderSharedSecret) {
+    const internal = buildInternalApp({ logger: true });
+    await internal.listen({ port: config.internalPort, host: "127.0.0.1" });
+    app.log.info(`internal recorder API listening on http://127.0.0.1:${config.internalPort}`);
+  }
+}
+
+main().catch((err) => {
+  app.log.error(err);
+  process.exit(1);
+});
