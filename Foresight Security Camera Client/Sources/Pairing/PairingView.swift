@@ -6,8 +6,13 @@
 //    1. Request camera + mic permission.
 //    2. Scan the QR the dashboard shows (a PairingTicket JSON).
 //    3. Detect this device's CameraCapabilities.
-//    4. Let the user name the camera.
+//    4. Let the user name the camera AND confirm the server it will trust.
 //    5. POST /pair/claim → store deviceSecret + metadata → enter camera mode.
+//
+//  The camera trusts the QR's server URL permanently (every later token mint
+//  sends its device secret there), so the user must explicitly confirm that
+//  server before claiming — a QR pointing somewhere unexpected is the one thing
+//  that would hand this camera's credentials and video to someone else.
 //
 
 import AVFoundation
@@ -25,6 +30,35 @@ final class PairingViewModel: ObservableObject {
 
     @Published var step: Step = .permissions
     @Published var name: String = ""
+    /// The user confirmed the server shown on screen is theirs (required to pair).
+    @Published var serverConfirmed = false
+
+    /// "host:port" of the ticket's server, shown for confirmation.
+    var serverDisplay: String {
+        guard let url = ticket.flatMap({ URLComponents(string: $0.serverUrl) }) else { return "—" }
+        let host = url.host ?? "—"
+        return url.port.map { "\(host):\($0)" } ?? host
+    }
+
+    /// True when the pairing (and every later request) would travel unencrypted
+    /// beyond a private LAN address.
+    var serverIsCleartextPublic: Bool {
+        guard let url = ticket.flatMap({ URLComponents(string: $0.serverUrl) }),
+              url.scheme == "http", let host = url.host else { return false }
+        return !Self.isPrivateHost(host)
+    }
+
+    static func isPrivateHost(_ host: String) -> Bool {
+        if host == "localhost" || host.hasSuffix(".local") { return true }
+        let octets = host.split(separator: ".").compactMap { Int($0) }
+        guard octets.count == 4 else { return false }
+        switch (octets[0], octets[1]) {
+        case (10, _), (127, _), (192, 168), (169, 254): return true
+        case (172, let b) where (16...31).contains(b): return true
+        case (100, let b) where (64...127).contains(b): return true   // CGNAT / Tailscale
+        default: return false
+        }
+    }
 
     private(set) var ticket: PairingTicket?
     private(set) var capabilities: CameraCapabilities?
@@ -46,6 +80,12 @@ final class PairingViewModel: ObservableObject {
         }
 
         let serverComponents = URLComponents(string: ticket.serverUrl)
+        guard let scheme = serverComponents?.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              serverComponents?.host?.isEmpty == false
+        else {
+            step = .failed("This pairing code has an invalid server address. Generate a new one on the dashboard.")
+            return
+        }
         let serverHost = serverComponents?.host ?? "(missing host)"
         let serverPort = serverComponents?.port.map { ":\($0)" } ?? ""
         print("[Foresight Camera] Pairing QR server host: \(serverHost)\(serverPort)")
@@ -65,7 +105,7 @@ final class PairingViewModel: ObservableObject {
 
     /// Claim the pairing with the chosen name.
     func claim(using model: AppModel) async {
-        guard let ticket, let capabilities else { return }
+        guard let ticket, let capabilities, serverConfirmed else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             step = .failed("Please give this camera a name.")
@@ -104,6 +144,7 @@ final class PairingViewModel: ObservableObject {
     func reset() {
         ticket = nil
         capabilities = nil
+        serverConfirmed = false
         step = .scanning
     }
 }
@@ -185,6 +226,16 @@ struct PairingView: View {
 
     private var scanning: some View {
         VStack(spacing: 0) {
+            if let notice = model.unpairNotice {
+                Label(notice, systemImage: "info.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color.orange.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.bottom, 8)
+                    .onTapGesture { model.clearUnpairNotice() }
+            }
             ZStack {
                 QRScannerView { code in
                     vm.didScan(code)
@@ -234,6 +285,30 @@ struct PairingView: View {
             }
             .padding(.horizontal)
 
+            // The camera will trust this server permanently — make the user
+            // look at it. A QR that points somewhere unexpected must not pair.
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Server")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text(vm.serverDisplay)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.white)
+                if vm.serverIsCleartextPublic {
+                    Label("This server isn't on your local network and the connection isn't encrypted (http).",
+                          systemImage: "exclamationmark.shield.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Toggle(isOn: $vm.serverConfirmed) {
+                    Text("This is my Foresight server")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                }
+                .tint(.green)
+            }
+            .padding(.horizontal)
+
             Button {
                 Task { await vm.claim(using: model) }
             } label: {
@@ -242,7 +317,7 @@ struct PairingView: View {
             }
             .buttonStyle(.borderedProminent)
             .padding(.horizontal)
-            .disabled(vm.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(vm.name.trimmingCharacters(in: .whitespaces).isEmpty || !vm.serverConfirmed)
 
             Button("Rescan") { vm.reset() }
                 .tint(.white)

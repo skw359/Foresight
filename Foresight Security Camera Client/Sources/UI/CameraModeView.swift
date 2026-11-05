@@ -8,9 +8,16 @@
 //  Go Live / Stop controls plus unpair. Commands themselves arrive over LiveKit
 //  and are applied by RealtimeSession — this view is a read-out + lifecycle UI.
 //
+//  Power/heat (REL-02): a phone streaming 24/7 shouldn't also render a
+//  full-screen preview at full brightness for nobody. After `dimAfter` seconds
+//  without a touch while streaming, the preview is removed (it stops rendering;
+//  publishing is unaffected) and the screen dims; a tap brings both back.
+//
 
+import Combine
 import LiveKit
 import SwiftUI
+import UIKit
 
 struct CameraModeView: View {
     @EnvironmentObject private var model: AppModel
@@ -20,12 +27,21 @@ struct CameraModeView: View {
     @State private var busy = false
     @State private var showUnpairConfirm = false
 
+    // Power saver (REL-02).
+    @State private var dimmed = false
+    @State private var lastInteraction = Date()
+    @State private var savedBrightness: CGFloat?
+    private let dimAfter: TimeInterval = 120
+    private let idleTick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            preview
-                .ignoresSafeArea()
+            if !dimmed {
+                preview
+                    .ignoresSafeArea()
+            }
 
             VStack {
                 topBar
@@ -47,7 +63,21 @@ struct CameraModeView: View {
                 controls
             }
             .padding()
+
+            if dimmed {
+                dimmedOverlay
+            }
         }
+        // Any touch counts as activity (simultaneous: never steals button taps).
+        .simultaneousGesture(TapGesture().onEnded { wake() })
+        .onReceive(idleTick) { _ in
+            if isStreaming, !dimmed, Date().timeIntervalSince(lastInteraction) > dimAfter {
+                dim()
+            } else if !isStreaming, dimmed {
+                wake()
+            }
+        }
+        .onDisappear { wake() }
         .confirmationDialog(
             "Unpair this camera?",
             isPresented: $showUnpairConfirm,
@@ -62,8 +92,42 @@ struct CameraModeView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The camera will stop streaming and be removed from your home. You'll need to pair it again.")
+            Text("The camera will stop streaming and be removed from your Home on the server. You'll need to pair it again.")
         }
+    }
+
+    // MARK: Power saver
+
+    private var dimmedOverlay: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "moon.fill")
+                .font(.system(size: 30))
+            Text("Streaming — screen dimmed to save power")
+                .font(.footnote.weight(.semibold))
+            Text("Tap to wake")
+                .font(.caption)
+                .opacity(0.7)
+        }
+        .foregroundStyle(.white.opacity(0.55))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .onTapGesture { wake() }
+    }
+
+    private func dim() {
+        dimmed = true
+        if savedBrightness == nil { savedBrightness = UIScreen.main.brightness }
+        UIScreen.main.brightness = 0.05
+    }
+
+    private func wake() {
+        lastInteraction = Date()
+        guard dimmed else { return }
+        dimmed = false
+        if let savedBrightness { UIScreen.main.brightness = savedBrightness }
+        savedBrightness = nil
     }
 
     // MARK: Preview
@@ -323,15 +387,17 @@ struct CameraModeView: View {
             Button {
                 Task { await toggleStreaming() }
             } label: {
+                // Follows the INTENT: a camera that is live — or offline but
+                // retrying on its own — offers Stop, which ends supervision.
                 Label(
-                    isStreaming ? "Stop" : "Go Live",
-                    systemImage: isStreaming ? "stop.fill" : "dot.radiowaves.left.and.right"
+                    session.wantsStreaming ? "Stop" : "Go Live",
+                    systemImage: session.wantsStreaming ? "stop.fill" : "dot.radiowaves.left.and.right"
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
-            .tint(isStreaming ? .red : .green)
+            .tint(session.wantsStreaming ? .red : .green)
             .disabled(busy || isConnecting)
 
             Button {
@@ -352,7 +418,7 @@ struct CameraModeView: View {
     private func toggleStreaming() async {
         busy = true
         defer { busy = false }
-        if isStreaming {
+        if session.wantsStreaming {
             await model.stopStreaming()
         } else {
             await model.startStreaming()

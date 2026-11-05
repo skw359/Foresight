@@ -3,8 +3,14 @@
 //  Foresight Security — shared protocol mirror.
 //
 //  Hand-kept in sync with shared/ts (rest.ts + realtime.ts + e2ee.ts). JSON
-//  keys MUST match the TypeScript contract exactly. Drop this file into both
-//  Swift apps (the Camera Client and the Viewing App).
+//  keys MUST match the TypeScript contract exactly.
+//
+//  THIS FILE IS CANONICAL. Both Swift apps carry a byte-identical copy
+//  (Foresight Security Camera Client/Sources/Protocol/ForesightProtocol.swift
+//  and Foresight/Foresight/Models/ForesightProtocol.swift — their Xcode
+//  projects reference those paths). Edit here, then run
+//  `node shared/scripts/sync-swift-protocol.mjs`; the server test suite fails
+//  if any copy drifts.
 //
 
 import Foundation
@@ -20,13 +26,38 @@ public enum Foresight {
 
     public struct ParsedIdentity { public let role: ParticipantRole; public let id: String }
 
+    /// Mirrors parseIdentity in realtime.ts: `camera:<id>` and
+    /// `user:<userId>:<session>` (the id is the userId, without the session).
     public static func parseIdentity(_ identity: String) -> ParsedIdentity? {
-        let parts = identity.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return nil }
+        let parts = identity.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2, !parts[1].isEmpty else { return nil }
         switch parts[0] {
         case "camera": return ParsedIdentity(role: .camera, id: parts[1])
         case "user": return ParsedIdentity(role: .viewer, id: parts[1])
         default: return nil
+        }
+    }
+
+    /// Mirrors isAuthorizedSender in realtime.ts. `senderIdentity` is the
+    /// LiveKit identity that published the packet, or nil for server-originated
+    /// data. Every receiver applies this before acting on a message:
+    ///   - state / telemetry: only the camera the payload is about;
+    ///   - ack: only a camera (receivers also match the commanded camera);
+    ///   - command: only a viewer — never another camera, never sender-less;
+    ///   - rekey: a viewer (the rotating owner) or the server itself.
+    public static func isAuthorizedSender(_ message: DataMessage, senderIdentity: String?) -> Bool {
+        let sender = senderIdentity.flatMap(parseIdentity)
+        switch message {
+        case .state(let m):
+            return sender?.role == .camera && sender?.id == m.cameraId
+        case .telemetry(let m):
+            return sender?.role == .camera && sender?.id == m.cameraId
+        case .ack:
+            return sender?.role == .camera
+        case .command:
+            return sender?.role == .viewer
+        case .rekey:
+            return senderIdentity == nil || sender?.role == .viewer
         }
     }
 }
@@ -294,7 +325,9 @@ public struct TelemetryMessage: Codable {
 /// `epoch`: re-fetch the sealed copy and re-apply `setKey(base64(HMK′))` —
 /// still at LiveKit key index 0 (`epoch` is server bookkeeping, never a key
 /// index). Clients that don't know this type ignore it (ForesightCodec.decode
-/// returns nil) and recover on their next reconnect.
+/// returns nil) and recover on their next reconnect. `epoch` 0 (sent by the
+/// server) means E2EE was turned off: if the server confirms it, a keyed client
+/// reconnects plaintext.
 public struct RekeyMessage: Codable {
     public var v: Int = Foresight.protocolVersion
     public var type: String = "rekey"
@@ -336,17 +369,33 @@ public enum DataMessage: Codable {
         case .rekey(let m): try m.encode(to: encoder)
         }
     }
+
+    /// The message's protocol version (`v`).
+    public var version: Int {
+        switch self {
+        case .command(let m): return m.v
+        case .ack(let m): return m.v
+        case .state(let m): return m.v
+        case .telemetry(let m): return m.v
+        case .rekey(let m): return m.v
+        }
+    }
 }
 
 /// JSON (de)serialization helpers for LiveKit data payloads.
 public enum ForesightCodec {
     public static func encode(_ msg: DataMessage) -> Data? { try? JSONEncoder().encode(msg) }
-    public static func decode(_ data: Data) -> DataMessage? { try? JSONDecoder().decode(DataMessage.self, from: data) }
+    /// nil for malformed payloads, unknown types, and any other protocol version.
+    public static func decode(_ data: Data) -> DataMessage? {
+        guard let msg = try? JSONDecoder().decode(DataMessage.self, from: data),
+              msg.version == Foresight.protocolVersion else { return nil }
+        return msg
+    }
 }
 
 // MARK: - E2EE (mirror e2ee.ts)
 //
-// THE LOCKED LIVEKIT KEY-APPLICATION CONTRACT (E2EE_MODEL_B_PLAN.md §3.2).
+// THE LOCKED LIVEKIT KEY-APPLICATION CONTRACT (shared/E2EE.md §3.2).
 // A divergence on ANY value below produces SILENT decryption failure (black
 // video, no error). The HMK is applied as `setKey(base64(HMK))` — a base64
 // STRING (LiveKit's PBKDF2 path), never raw bytes — and ALWAYS at key index 0
