@@ -18,7 +18,6 @@ function pinStorageKey(homeId: string, holderType: KeyHolderType, holderId: stri
 
 export type PinState = "new" | "match" | "changed";
 
-/** Compare a holder's presented pubkey against the local pin. */
 export function checkPin(
   homeId: string,
   holderType: KeyHolderType,

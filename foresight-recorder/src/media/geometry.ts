@@ -9,8 +9,8 @@
  * 960x540). ffmpeg's rawvideo input geometry is fixed, so the recorder must
  * respawn the encoder on every such change.
  *
- * Respawning used to mean the segments on disk carried whatever geometry was
- * live at the time, which broke `clip.mp4` exports: an MP4 track declares ONE
+ * Without a stable target, segments on disk would carry whatever geometry was
+ * live at the time, which breaks `clip.mp4` exports: an MP4 track declares ONE
  * resolution, so a `-c copy` remux of a mixed range inherits the FIRST piece's
  * size — a 320x180 download of footage that ran at 960x540 seconds later. Every
  * segment is therefore encoded at one stable TARGET geometry per camera and the

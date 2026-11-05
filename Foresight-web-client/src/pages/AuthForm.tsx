@@ -2,9 +2,8 @@
  * Shared register/login form. SINGLE identifier field (email OR username) +
  * password with no complexity rules, per the contract.
  *
- * Visual layout mirrors the Journey login: a dark, two-panel split card with an
- * animated visual side and a form side. Recolored to Foresight's coral accent.
- * Styling lives under the scoped `.login-screen` block in styles.css.
+ * Visual layout: a dark, two-panel split card with an animated visual side and a
+ * form side. Styling lives under the scoped `.login-screen` block in styles.css.
  */
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";

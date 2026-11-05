@@ -1,8 +1,3 @@
-/**
- * Runtime view-model types for the dashboard's live camera state. These layer
- * the realtime `state` + `telemetry` data messages (and LiveKit track info) on
- * top of the static CameraDTO from REST.
- */
 import type {
   CameraDTO,
   QualityPreset,
@@ -22,12 +17,9 @@ export interface LiveCamera {
 
   /** LiveKit participant publishing this camera, if connected. */
   participant: RemoteParticipant | null;
-  /** Subscribed video track, if any. */
   videoTrack: RemoteTrack | null;
-  /** Subscribed audio track, if any. */
   audioTrack: RemoteTrack | null;
 
-  /** True when a LiveKit participant for this camera is present. */
   online: boolean;
   /**
    * True when the room is E2EE but this camera's frames can't be decrypted yet
@@ -36,7 +28,6 @@ export interface LiveCamera {
    */
   decrypting: boolean;
 
-  /* --- from `state` messages --- */
   torchOn: boolean;
   lens: number;
   zoom: number;
@@ -44,7 +35,6 @@ export interface LiveCamera {
   recording: boolean;
   talking: boolean;
 
-  /* --- from `telemetry` messages --- */
   battery: number | null;
   charging: boolean | null;
   wifi: WifiInfo | null;

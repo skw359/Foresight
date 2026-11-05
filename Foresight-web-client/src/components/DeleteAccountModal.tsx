@@ -1,20 +1,16 @@
 /**
  * Confirm + perform permanent deletion of the signed-in user's own account.
- *
- * This is irreversible. To arm the button the user must type their account
- * identifier exactly (mirrors the type-to-confirm pattern in DeleteHomeModal).
+ * The user must type their account identifier exactly to arm the button.
  *
  * What gets deleted is decided server-side (DELETE /me): Homes the user solely
- * owns (cameras + footage) go with the account; Homes they merely belong to (or
- * co-own) survive. The one case the server refuses is when the user is the SOLE
- * owner of a Home that still has other members — wiping it would take data other
- * people rely on. When that happens the backend returns 409 with the blocking
- * Homes in `details`, and this modal switches to a resolve view that lets the
- * user, per Home, transfer ownership to another member or delete the Home. Once
- * all blockers are cleared they can retry the deletion.
+ * owns go with the account; Homes they merely belong to survive. The server
+ * refuses (409, blockers in `details`) when the user is the SOLE owner of a
+ * Home that still has other members; the modal then switches to a resolve view
+ * where, per Home, they transfer ownership or delete it, and can retry once
+ * all blockers are cleared.
  *
- * On success we clear the session (the API client already dropped the token) and
- * bounce to /login.
+ * On success the session is cleared (the API client already dropped the token)
+ * and we bounce to /login.
  */
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";

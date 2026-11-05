@@ -2,8 +2,7 @@
  * Confirm + perform turning a Home's end-to-end encryption off (owner-only,
  * from Settings → Security). The server drops every sealed key copy and tells
  * the room, so cameras and viewers reconnect plaintext on their own; the caller
- * reconnects this session in `onDisabled`. Mirrors DeleteHomeModal: busy/error
- * handling around the shared <Modal>, dismissing via the render-prop `close`.
+ * reconnects this session in `onDisabled`.
  */
 import { useState } from "react";
 

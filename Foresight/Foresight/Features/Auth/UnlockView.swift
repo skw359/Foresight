@@ -4,7 +4,7 @@
 //
 //  Cold-launch E2EE re-unlock. Presented at the app root when the JWT survived
 //  but the in-memory identity key did not and Face ID / Touch ID was
-//  unavailable or declined (plan §7.4, anchor Session.swift:39). Re-derives the
+//  unavailable or declined (plan §7.4). Re-derives the
 //  identity key from the password so E2EE-activated Homes can decrypt again.
 //
 

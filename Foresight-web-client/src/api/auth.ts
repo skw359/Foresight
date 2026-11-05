@@ -1,8 +1,3 @@
-/**
- * JWT + user persistence for the dashboard. The bearer token from
- * /auth/register and /auth/login is stored in localStorage and attached to
- * authenticated requests by the API client.
- */
 import type { UserDTO } from "@foresight/contract";
 
 const TOKEN_KEY = "foresight.token";
@@ -15,7 +10,6 @@ function emit() {
   for (const l of listeners) l();
 }
 
-/** Subscribe to auth changes (login/logout). Returns an unsubscribe fn. */
 export function onAuthChange(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

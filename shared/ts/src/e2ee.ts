@@ -48,8 +48,6 @@
  * band when it matters. See shared/E2EE.md for the full model.
  */
 
-/* ------------------------------------------------- LiveKit locked constants */
-
 /** AES key size in bits fed to LiveKit key providers. 128 is the only value all SDKs support. */
 export const E2EE_KEY_SIZE = 128;
 /** LiveKit frame-encryption algorithm. Must match the publisher (camera). */
@@ -79,8 +77,6 @@ export const E2EE_KEY_RING_SIZE = 16;
  */
 export const E2EE_PBKDF2_ITERATIONS = 100000;
 
-/* -------------------------------------------- libsodium primitive constants */
-
 /** Argon2id opslimit for the password→vault-key KDF (stored per-blob in KdfParams). */
 export const E2EE_ARGON2ID_OPSLIMIT = 3;
 /** Argon2id memlimit in bytes (64 MiB), stored per-blob in KdfParams. */
@@ -97,8 +93,6 @@ export const E2EE_WRAPPED_PRIVATE_KEY_BYTES = 48;
 export const E2EE_SECRETBOX_NONCE_BYTES = 24;
 /** Argon2id salt length (crypto_pwhash_SALTBYTES). */
 export const E2EE_KDF_SALT_BYTES = 16;
-
-/* -------------------------------------------------------------- Key types */
 
 /** Who a sealed copy of a Home Media Key belongs to. */
 export type KeyHolderType = "user" | "camera" | "recorder";
@@ -144,8 +138,7 @@ export interface SealedKey {
   epoch: number;
 }
 
-/* ----------------------------------------------------- REST request/response
- * Route map (all session-authed unless noted):
+/* Route map (all session-authed unless noted):
  *   POST /me/keys                     body: SetKeyVaultRequest       → 204 (409 vault_exists when replacing a DIFFERENT existing vault without a correct currentPassword)
  *   GET  /me/keys                     → MeKeysResponse
  *   GET  /homes/:homeId/key           → HomeKeyResponse   (caller's own sealed copy)
@@ -300,8 +293,6 @@ export interface CameraKeyRegistration {
   /** base64 X25519 public key (32 B). */
   publicKey: string;
 }
-
-/* ------------------------------------------------ Internal (server↔recorder) */
 
 /** Body of POST /internal/recorder-identity — recorder registers/refreshes its pubkey on boot. */
 export interface RegisterRecorderIdentityRequest {

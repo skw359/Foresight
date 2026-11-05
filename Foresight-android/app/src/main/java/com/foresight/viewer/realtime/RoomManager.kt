@@ -119,7 +119,6 @@ class RoomManager(
         options = RoomOptions(adaptiveStream = true, dynacast = true),
     )
 
-    // E2EE (plan §7.4)
     /**
      * Shared-key provider fed to LiveKit. Created once when the Home is E2EE-
      * activated; the SAME instance is reused across reconnects and rotations so
@@ -154,8 +153,6 @@ class RoomManager(
         }
     }
 
-    // MARK: - Seeding from REST
-
     /**
      * Seed/refresh the camera list from the REST registry. Live data already
      * gathered from the room is preserved.
@@ -180,8 +177,6 @@ class RoomManager(
         // Reconcile against any participants already in the room.
         reconcileParticipants()
     }
-
-    // MARK: - Connection lifecycle
 
     suspend fun connect() {
         val canConnect = phase == ConnectionPhase.Idle ||
@@ -295,8 +290,6 @@ class RoomManager(
         room.release()
     }
 
-    // MARK: - E2EE key application (plan §3.2 — the locked contract)
-
     /**
      * Build the shared-key provider (once) and apply the Home Media Key.
      *
@@ -335,8 +328,6 @@ class RoomManager(
             if (phase == ConnectionPhase.AwaitingKey) connect()
         }
     }
-
-    // MARK: - Rotation (plan §6 / §10.2 — sub-second blip accepted)
 
     /**
      * A `rekey` arrived. Re-fetch the sealed HMK for the new epoch, unseal, and
@@ -392,8 +383,6 @@ class RoomManager(
         }
     }
 
-    // MARK: - Track subscription (grid = low, full-screen = high/max)
-
     /**
      * Subscribe to a camera's video and request a layer for its current context.
      * With adaptiveStream on, the SDK auto-manages layers from renderer size;
@@ -432,8 +421,6 @@ class RoomManager(
         return participant.audioTrackPublications.firstOrNull()?.first as? RemoteTrackPublication
     }
 
-    // MARK: - Listen (remote audio playback)
-
     /**
      * Toggle whether we hear this camera's audio: remote audio plays exactly
      * while its publication is subscribed.
@@ -466,8 +453,6 @@ class RoomManager(
         applyListenPreference(participant, parsed.id)
     }
 
-    // MARK: - Commands (DATA channel)
-
     /**
      * Send a command to a specific camera over the reliable data channel,
      * addressed via destinationIdentities (matches web + iOS exactly).
@@ -482,7 +467,6 @@ class RoomManager(
         ).isSuccess
     }
 
-    // Convenience wrappers mirroring the control set.
     suspend fun setTorch(camera: LiveCamera, on: Boolean) {
         send(CommandAction.TORCH, camera, CommandArgs(on = on))
     }
@@ -517,8 +501,6 @@ class RoomManager(
         send(CommandAction.ALARM, camera, CommandArgs(on = on))
     }
 
-    // MARK: - Push-to-talk
-
     /** Begin push-to-talk: publish the mic and notify the camera to play it. */
     suspend fun startTalking(camera: LiveCamera) {
         try {
@@ -537,8 +519,6 @@ class RoomManager(
         isTalking = false
     }
 
-    // MARK: - Preset → simulcast layer mapping (per PROTOCOL §5)
-
     companion object {
         /**
          * auto → adaptive (medium as a sensible default while adaptiveStream is
@@ -554,8 +534,6 @@ class RoomManager(
             QualityPreset.PURE4K -> VideoQuality.HIGH
         }
     }
-
-    // MARK: - Participant reconciliation
 
     private fun reconcileParticipants() {
         room.remoteParticipants.values.forEach { attach(it) }
@@ -612,8 +590,6 @@ class RoomManager(
             else -> Unit // acks/commands are not acted on by the viewer in v1
         }
     }
-
-    // MARK: - Room events
 
     private suspend fun onRoomEvent(event: RoomEvent) {
         when (event) {

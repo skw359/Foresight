@@ -1,26 +1,13 @@
 /**
- * App-level "General" settings — everything that follows the signed-in user or
+ * App-level "General" settings: everything that follows the signed-in user or
  * this device rather than any single Home. Rendered as the "General" tab of
- * the Settings page (/homes/:homeId/settings), next to the per-Home "Home"
- * and "Security" tabs.
+ * the Settings page.
  *
- * Sections, top to bottom:
- *
- *   • Appearance    — light/dark (client-only, applied instantly and persisted
- *                     on the device via ThemeProvider).
- *   • Server        — the pairing URL embedded into QR pairing tickets (must be
- *                     reachable by the phones being paired, so on a LAN it has
- *                     to be this machine's IP, not "localhost"; blank clears
- *                     the override and lets the server auto-detect) and whether
- *                     new accounts may register. SERVER-WIDE, so only the
- *                     server administrator can change them; everyone else
- *                     sees them read-only.
- *   • Camera unlock — whether this device stores the user's camera encryption
- *                     keys so feeds open without re-entering the password
- *                     after a reload.
- *   • Account       — first name (used for the Homes-page greeting), password
- *                     change (re-wraps the E2EE vault), sign out everywhere,
- *                     and the delete-account danger zone.
+ * Server settings (pairing URL, registration policy) are SERVER-WIDE, so only
+ * the server administrator can change them; everyone else sees them read-only.
+ * The pairing URL is embedded into QR tickets and must be reachable by the
+ * phones being paired, so on a LAN it has to be this machine's IP, not
+ * "localhost"; blank clears the override and lets the server auto-detect.
  */
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -44,13 +31,11 @@ export function GeneralSettings() {
   const { user, updateUser } = useAuth();
   const { keepUnlocked, setKeepUnlocked } = useE2EE();
 
-  // Profile name form.
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [nameBusy, setNameBusy] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Pairing server URL form.
   const [url, setUrl] = useState("");
   const [detected, setDetected] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -62,7 +47,6 @@ export function GeneralSettings() {
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [registrationLocked, setRegistrationLocked] = useState(false);
 
-  // Password change.
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");

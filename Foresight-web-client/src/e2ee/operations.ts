@@ -41,9 +41,7 @@ export interface PinConflict {
   publicKey: string;
 }
 
-/** Result of a sealing sweep. */
 export interface SealResult {
-  /** How many sealed copies were uploaded. */
   sealed: number;
   /** Holders skipped because their pinned key changed (surface a security alert). */
   conflicts: PinConflict[];
@@ -96,8 +94,6 @@ const toTarget = (h: PendingKeyHolder): SealTarget => ({
   label: h.label,
 });
 
-/* --------------------------------------------------------------- activation */
-
 export interface ActivationEligibility {
   /** Holders that will receive the HMK (cameras + members with vaults + self). */
   eligible: PendingKeyHolder[];
@@ -137,8 +133,6 @@ export async function activateHome(
   return { epoch: res.keyEpoch, hmkBase64: hmk.base64, conflicts, newPins };
 }
 
-/* --------------------------------------------------------------- reconcile */
-
 /**
  * Backfill sweep (any current holder, post-connect, off the join path). Seals to
  * holders that already had access at a previous epoch (firstContact === false).
@@ -170,7 +164,7 @@ export async function grantHolders(
 }
 
 /**
- * Owner repair for a poisoned/undecryptable sealed copy (review 2026-07-03 #1):
+ * Owner repair for a poisoned/undecryptable sealed copy:
  * drop the holder's current-epoch row, then re-seal the current HMK to them via
  * the owner-grant path (TOFU pins intact — a changed pin surfaces as a conflict,
  * NOT a silent re-seal). sealed === 0 with no conflicts ⇒ the holder no longer
@@ -190,8 +184,6 @@ export async function reissueKey(
   if (!target) return { sealed: 0, conflicts: [], newPins: [] };
   return grantHolders(homeId, hmkBase64, epoch, [target]);
 }
-
-/* ----------------------------------------------------------------- rotation */
 
 /**
  * Every holder the new epoch must be sealed to, fetched BEFORE the epoch bumps:
@@ -251,8 +243,6 @@ export async function rotateHome(
   };
 }
 
-/* ------------------------------------------------------------- recorder consent */
-
 /** Enable recorder consent: seal the CURRENT HMK to the recorder pubkey + POST. */
 export async function enableRecorderConsent(
   homeId: string,
@@ -275,13 +265,10 @@ export async function disableRecorderConsentAndRotate(
   return rotateHome(homeId, consent.keyEpoch);
 }
 
-/** Convenience: fetch the recorder identity for the consent UI. */
 export async function fetchRecorderIdentity(): Promise<string | null> {
   const { publicKey } = await getRecorderIdentity();
   return publicKey;
 }
-
-/* ------------------------------------------------------------------- helpers */
 
 function isConflict(err: unknown): boolean {
   return typeof err === "object" && err !== null && "status" in err && (err as { status: number }).status === 409;

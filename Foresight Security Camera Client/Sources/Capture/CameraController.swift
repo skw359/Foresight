@@ -2,22 +2,13 @@
 //  CameraController.swift
 //  Foresight Camera Client
 //
-//  Owns the local capture pipeline expressed through the LiveKit SDK:
-//    - a camera video track (created from a CameraCaptureOptions for the chosen
-//      optical lens) published with simulcast
-//    - a microphone audio track
+//  Owns the local capture pipeline (camera + microphone tracks) and the hardware
+//  controls (torch, digital zoom, lens switch), reached through the track's
+//  CameraCapturer.device.
 //
-//  It also drives the hardware controls the protocol exposes by reaching into
-//  the track's CameraCapturer.device (an AVCaptureDevice):
-//    - torch (torchMode)
-//    - digital zoom (videoZoomFactor)
-//    - optical lens switch (reconfigure capture options to a different device)
-//
-//  Quality presets map to which simulcast layers we publish + the capture
-//  dimensions: `480p`/`auto`/`1080p` publish a simulcast ladder, and `max`
-//  publishes a single true-4K layer on devices whose sensor supports it. The
-//  capturer is reused across lens switches so the published track SID is stable
-//  for viewers.
+//  `480p`/`auto`/`1080p` publish a simulcast ladder; `max` publishes a single
+//  true-4K layer on devices whose sensor supports it. The capturer is reused
+//  across lens switches so the published track SID is stable for viewers.
 //
 
 import AVFoundation
@@ -31,7 +22,6 @@ private struct QualityProfile {
     /// The simulcast ladder (low → high). For a non-simulcast profile (`max` on
     /// a 4K-capable device) this holds the single encoding layer to publish.
     let simulcastLayers: [VideoParameters]
-    /// Whether to publish as simulcast. `false` for single-layer 4K.
     let simulcast: Bool
 
     init(captureDimensions: Dimensions, simulcastLayers: [VideoParameters], simulcast: Bool = true) {
@@ -49,11 +39,10 @@ private struct QualityProfile {
         let high = VideoParameters(dimensions: Dimensions(width: 1920, height: 1080),
                                    encoding: VideoEncoding(maxBitrate: 3_000_000, maxFps: 30))
 
-        // The crisp 1080p top layer: same resolution as `high`, more bits.
+        // Same resolution as `high`, more bits.
         let highMax = VideoParameters(dimensions: Dimensions(width: 1920, height: 1080),
                                       encoding: VideoEncoding(maxBitrate: 6_000_000, maxFps: 30))
-        // The 1080p simulcast ladder that both `1080p` and the non-4K fallback
-        // for `max` publish.
+        // Published by both `1080p` and the non-4K fallback for `max`.
         let ladder1080 = QualityProfile(captureDimensions: Dimensions(width: 1920, height: 1080),
                                         simulcastLayers: [low, med, highMax])
 
@@ -62,15 +51,13 @@ private struct QualityProfile {
             return QualityProfile(captureDimensions: Dimensions(width: 854, height: 480),
                                   simulcastLayers: [low])
         case .p1080:
-            // "1080p" is the crisp 1080p: the reliable 3-layer ladder with the
-            // extra bits spent on the top layer. WebRTC simulcast caps at 3
-            // layers and the top layer is always the capture resolution, so this
-            // is as sharp as 1080p gets while keeping a low layer for the grid.
+            // WebRTC simulcast caps at 3 layers and the top layer is always the
+            // capture resolution, so the extra bits go to the top layer.
             return ladder1080
         case .max, .pure4k:
-            // "Max" is true 4K as a SINGLE non-simulcast layer (solo/full-screen
-            // mode). `pure4k` is the legacy wire value for the same thing, kept
-            // so older viewers keep working.
+            // True 4K as a SINGLE non-simulcast layer (solo/full-screen mode).
+            // `pure4k` is the legacy wire value for the same thing, kept so older
+            // viewers keep working.
             //
             // Devices whose capability detection can't confirm 4K30 video get
             // the 1080p ladder instead of a 4K publish that would only fail;
@@ -99,14 +86,11 @@ private struct QualityProfile {
 final class CameraController {
     /// The published video track (preview renders this so it matches the wire).
     private(set) var videoTrack: LocalVideoTrack?
-    /// The published microphone track.
     private(set) var audioTrack: LocalAudioTrack?
 
-    /// Lenses discovered on this device (factor → AVCaptureDevice).
     private let lenses: [LensOption]
     private let capabilities: CameraCapabilities
 
-    /// Currently active optical factor and digital zoom.
     private(set) var activeLens: Double
     private(set) var activeZoom: Double = 1.0
     private(set) var torchOn: Bool = false
@@ -114,18 +98,16 @@ final class CameraController {
     init(capabilities: CameraCapabilities) {
         self.capabilities = capabilities
         self.lenses = CameraCapabilityDetector.availableLenses()
-        // Default to the back wide (1x) camera per the task; else first available.
+        // Default to the back wide (1x) camera; else first available.
         self.activeLens = lenses.contains(where: { $0.factor == 1 }) ? 1.0 : (lenses.first?.factor ?? 1.0)
     }
 
-    /// The AVCaptureDevice backing the active camera track, if running.
     private var activeCaptureDevice: AVCaptureDevice? {
         (videoTrack?.capturer as? CameraCapturer)?.device
     }
 
     // MARK: Track lifecycle
 
-    /// Build the video + audio tracks for the default lens & a quality preset.
     /// Tracks are created but not yet published; the RealtimeSession publishes them.
     func makeTracks(quality: QualityPreset) -> (video: LocalVideoTrack, audio: LocalAudioTrack) {
         let captureOptions = cameraCaptureOptions(forFactor: activeLens, quality: quality)
@@ -143,10 +125,9 @@ final class CameraController {
         !QualityProfile.profile(for: quality, maxResolution: capabilities.maxResolution).simulcast
     }
 
-    /// Build a FRESH camera video track for the given preset and adopt it as the
-    /// active track. Used only when the publish *structure* has to change — i.e.
-    /// entering or leaving single-layer 4K ("Max") —
-    /// because re-publishing an already-unpublished `LocalVideoTrack` instance
+    /// Build a FRESH camera video track and adopt it as the active track. Used
+    /// only when the publish *structure* has to change — entering or leaving
+    /// single-layer 4K ("Max") — because re-publishing an already-unpublished `LocalVideoTrack` instance
     /// does not reliably re-propagate to subscribers. Within the simulcast family
     /// we never rebuild: `applyQuality` reconfigures the live capturer instead, so
     /// the published track SID stays stable and viewers never lose their feed.
@@ -161,13 +142,10 @@ final class CameraController {
         return video
     }
 
-    /// VideoPublishOptions for a quality preset. Simulcast for the adaptive
-    /// presets; a single high-bitrate layer for 4K ("Max").
     func publishOptions(for quality: QualityPreset) -> VideoPublishOptions {
         let profile = QualityProfile.profile(for: quality, maxResolution: capabilities.maxResolution)
         guard profile.simulcast else {
-            // Single-layer 4K: one high-bitrate layer, no simulcast. Preserve resolution
-            // over framerate since image quality is the whole point of this mode.
+            // Preserve resolution over framerate; image quality is the point of 4K.
             return VideoPublishOptions(
                 encoding: profile.simulcastLayers.last?.encoding,
                 simulcast: false,
@@ -183,7 +161,6 @@ final class CameraController {
         )
     }
 
-    /// Capture options for a given optical factor + quality.
     private func cameraCaptureOptions(forFactor factor: Double, quality: QualityPreset) -> CameraCaptureOptions {
         let profile = QualityProfile.profile(for: quality, maxResolution: capabilities.maxResolution)
         let lens = lenses.first(where: { $0.factor == factor })
@@ -198,7 +175,6 @@ final class CameraController {
 
     // MARK: Controls
 
-    /// Toggle the torch on the active device (no-op if unavailable).
     @discardableResult
     func setTorch(on: Bool) -> Bool {
         guard capabilities.torch, let device = activeCaptureDevice, device.hasTorch else { return false }
@@ -260,7 +236,6 @@ final class CameraController {
         }
     }
 
-    /// Apply a new quality preset to the live capturer (re-dimensions capture).
     /// Publish-layer changes are applied by republishing in RealtimeSession.
     @discardableResult
     func applyQuality(_ quality: QualityPreset) async -> Bool {

@@ -155,9 +155,7 @@ struct HomeGridView: View {
         onRefreshHomes: @escaping () async -> Void = {},
         onOpenSettings: @escaping () -> Void = {}
     ) {
-        // Build against the live session API via the placeholder pattern: the
-        // real client is identical (same baseURLProvider + token store) because
-        // Session.api is the single shared instance.
+        // Session.api is the single shared instance, so the model can be built here.
         _model = StateObject(wrappedValue: HomeGridViewModel(home: home, api: Session.shared.api))
         self.homesError = homesError
         self.onDismissHomesError = onDismissHomesError

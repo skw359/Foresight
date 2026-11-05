@@ -44,7 +44,6 @@ export function assertCryptoContract(): void {
     }
   };
 
-  // libsodium primitive sizes must match the contract's declared sizes.
   eq("crypto_box_PUBLICKEYBYTES", sodium.crypto_box_PUBLICKEYBYTES, E2EE_X25519_KEY_BYTES);
   eq("crypto_box_SECRETKEYBYTES", sodium.crypto_box_SECRETKEYBYTES, E2EE_X25519_KEY_BYTES);
   eq("sealed HMK size", E2EE_HMK_BYTES + sodium.crypto_box_SEALBYTES, E2EE_SEALED_HMK_BYTES);

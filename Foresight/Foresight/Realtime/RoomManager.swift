@@ -40,7 +40,6 @@ final class RoomManager: ObservableObject {
     @Published private(set) var phase: ConnectionPhase = .idle
     /// Live cameras keyed by cameraId, ordered for stable grid layout.
     @Published private(set) var cameras: [LiveCamera] = []
-    /// True while the local mic is published (push-to-talk active).
     @Published private(set) var isTalking: Bool = false
 
     private let homeId: String
@@ -105,13 +104,11 @@ final class RoomManager: ObservableObject {
                 order.append(cam)
             }
         }
-        // Drop cameras that no longer exist in the registry.
         let liveIds = Set(rest.map(\.id))
         for id in camerasById.keys where !liveIds.contains(id) {
             camerasById.removeValue(forKey: id)
         }
         cameras = order
-        // Reconcile against any participants already in the room.
         reconcileParticipants()
     }
 
@@ -164,7 +161,7 @@ final class RoomManager: ObservableObject {
                 let options = mediaOnlyE2EE.roomOptions(keyProvider: provider)
                 try await room.connect(url: rt.livekitUrl, token: rt.token, roomOptions: options)
             } else {
-                // Not activated (epoch 0/nil): connect exactly as today, no e2ee.
+                // Not activated (epoch 0/nil): connect without E2EE.
                 // adaptiveStream + dynacast let the SFU pause unviewed tiles and
                 // pick layers; we still pin quality explicitly per the contract.
                 let options = RoomOptions(adaptiveStream: true, dynacast: true)
@@ -364,7 +361,6 @@ final class RoomManager: ObservableObject {
         }
     }
 
-    // Convenience wrappers mirroring the control set.
     func setTorch(_ camera: LiveCamera, on: Bool) async {
         await send(.torch, to: camera, args: CommandArgs(on: on))
     }
@@ -479,7 +475,7 @@ final class RoomManager: ObservableObject {
             camerasById[t.cameraId]?.apply(t)
         case .rekey(let r):
             // The Home Media Key rotated: re-fetch our sealed copy and re-apply
-            // it. Handled deliberately (plan §6, work item 6) — never ignored.
+            // it (plan §6) — never ignored.
             Task { await self.handleRekey(epoch: r.epoch) }
         case .ack, .command:
             // Viewer doesn't act on acks/commands in v1 (no UI requirement).
@@ -524,7 +520,6 @@ final class RoomManager: ObservableObject {
                 scheduleKeyRetry()
                 return
             }
-            // Ensure the identity is still available (it should be while connected).
             let unlocked = await vault.isUnlocked
             if !unlocked {
                 guard await Session.shared.ensureIdentityUnlocked() else {
@@ -614,7 +609,6 @@ extension RoomManager: RoomDelegate {
     nonisolated func room(_ room: Room, participant: RemoteParticipant,
                           didUnsubscribeTrack publication: RemoteTrackPublication) {
         Task { @MainActor in
-            // Refresh the track reference (may have lost the video track).
             if let id = participant.identity?.stringValue,
                let parsed = Foresight.parseIdentity(id),
                let cam = self.camerasById[parsed.id] {

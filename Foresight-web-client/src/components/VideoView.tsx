@@ -1,10 +1,8 @@
 /**
- * Attaches a LiveKit RemoteTrack (or a raw MediaStreamTrack) to a <video>.
- * Optionally attaches a RemoteAudioTrack to a hidden <audio> element for
- * full-screen playback (browsers require the audio element to exist in the DOM
- * and room.startAudio() to have been called to satisfy autoplay policy).
- * Exposes the element via ref so callers can grab frames (snapshot) or build a
- * MediaStream (record). Detaches cleanly on unmount / track change.
+ * Attaches a LiveKit RemoteTrack (or a raw MediaStreamTrack) to a <video>, and
+ * optionally a RemoteAudioTrack to a hidden <audio> element. The element is
+ * exposed via ref so callers can grab frames (snapshot) or build a
+ * MediaStream (record).
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { RemoteAudioTrack, RemoteTrack } from "livekit-client";
@@ -42,7 +40,6 @@ export const VideoView = forwardRef<VideoViewHandle, VideoViewProps>(
       return videoRef.current;
     } }), []);
 
-    // LiveKit RemoteTrack attach/detach.
     useEffect(() => {
       const el = videoRef.current;
       if (!el || !track) return;
@@ -52,7 +49,6 @@ export const VideoView = forwardRef<VideoViewHandle, VideoViewProps>(
       };
     }, [track]);
 
-    // LiveKit RemoteAudioTrack attach/detach.
     useEffect(() => {
       const el = audioRef.current;
       if (!el || !audioTrack) return;
@@ -62,7 +58,6 @@ export const VideoView = forwardRef<VideoViewHandle, VideoViewProps>(
       };
     }, [audioTrack]);
 
-    // Raw MediaStreamTrack (dev camera preview).
     useEffect(() => {
       const el = videoRef.current;
       if (!el || track) return; // LiveKit track takes precedence

@@ -2,12 +2,12 @@
  * Constant-frame-rate pacing for the rawvideo pipe (REC-02).
  *
  * ffmpeg's rawvideo input has no timestamps: frame N is stamped N / fps. The
- * recorder used to write frames whenever they arrived, so whenever FEWER than
- * `fps` frames per second arrived — the camera's 20 fps 480p preset, WebRTC
+ * recorder would otherwise write frames whenever they arrive, so whenever FEWER
+ * than `fps` frames per second arrive — the camera's 20 fps 480p preset, WebRTC
  * lowering the frame rate under congestion, frames dropped under encoder
- * backpressure — the media timeline ran fast: 20 fps in, 6 s of media per 9 s
- * of wall clock, footage played back 1.5x and segment durations disagreed with
- * their wall-clock names.
+ * backpressure — the media timeline would run fast: 20 fps in, 6 s of media per
+ * 9 s of wall clock, footage played back 1.5x and segment durations disagreeing
+ * with their wall-clock names.
  *
  * The pacer maps each frame's REAL timestamp onto the constant-rate output
  * timeline: output slot k is CENTRED on t0 + k/fps (so on-rate input with a

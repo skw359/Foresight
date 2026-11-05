@@ -59,18 +59,14 @@ export function HomeSecurityPanel({
   // (TOFU §10.5 — make the trust decision visible instead of silent).
   const [newPins, setNewPins] = useState<string[]>([]);
 
-  // Activation precheck.
   const [offenders, setOffenders] = useState<string[] | null>(null);
-  // Pending first-contact grants (activated homes).
   const [pending, setPending] = useState<PendingKeyHolder[] | null>(null);
   // Members + the FULL pending id set (`pending` above is firstContact-only) —
   // the issued-keys repair list is (members ∪ cameras with a key) − pending.
   const [members, setMembers] = useState<HomeMemberDTO[] | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string> | null>(null);
-  // Recorder consent.
   const [recorderPk, setRecorderPk] = useState<string | null>(null);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
-  // Turn-off confirmation.
   const [showDisable, setShowDisable] = useState(false);
 
   const cameraName = useCallback(
@@ -78,7 +74,6 @@ export function HomeSecurityPanel({
     [cameras],
   );
 
-  /* ---- load state on open ---- */
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -130,7 +125,6 @@ export function HomeSecurityPanel({
     }
   }
 
-  /* ---- activation ---- */
   async function activate() {
     setBusy("activate");
     setError(null);
@@ -159,7 +153,6 @@ export function HomeSecurityPanel({
     }
   }
 
-  /* ---- grant first-contact holders ---- */
   async function grant(holders: PendingKeyHolder[], allowRepin = false) {
     setBusy("grant");
     setError(null);
@@ -183,7 +176,6 @@ export function HomeSecurityPanel({
     }
   }
 
-  /* ---- recorder consent ---- */
   async function toggleRecorder(enable: boolean) {
     setBusy("recorder");
     setError(null);
@@ -240,7 +232,6 @@ export function HomeSecurityPanel({
     }
   }
 
-  /* ---- turned off (the modal made the call; the server already told the room) ---- */
   function onDisabled() {
     setShowDisable(false);
     setError(null);
@@ -356,7 +347,6 @@ export function HomeSecurityPanel({
       )}
 
       {!activated ? (
-        /* ------------------------------ activation ------------------------------ */
         <div>
           <p className="muted" style={{ marginTop: 0 }}>
             <Icon name="lock" size={15} /> End-to-end encryption makes camera video readable only on your authorized
@@ -406,7 +396,6 @@ export function HomeSecurityPanel({
           </div>
         </div>
       ) : (
-        /* ------------------------------ activated ------------------------------ */
         <div>
           <p className="e2ee-status">
             <Icon name="shield" size={16} className="icon e2ee-shield" /> Encrypted
@@ -420,7 +409,6 @@ export function HomeSecurityPanel({
             </span>
           </p>
 
-          {/* pending first-contact grants */}
           <h3 style={{ marginBottom: 6 }}>Access grants</h3>
           {pending === null ? (
             <div className="center-load">
@@ -491,7 +479,6 @@ export function HomeSecurityPanel({
             </ul>
           )}
 
-          {/* recorder consent */}
           <h3 style={{ marginTop: 20, marginBottom: 6 }}>24/7 recording</h3>
           {recorderPk === null ? (
             <p className="faint">No recorder is registered on this server, so recording can't be consented to.</p>
@@ -532,7 +519,6 @@ export function HomeSecurityPanel({
             {busy === "rotate" ? <span className="spinner" /> : "Rotate now"}
           </button>
 
-          {/* turn off */}
           <div className="danger-zone">
             <h3 style={{ marginTop: 0, marginBottom: 6 }}>Turn off encryption</h3>
             <p className="faint" style={{ marginTop: 0 }}>

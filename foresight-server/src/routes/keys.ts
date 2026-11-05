@@ -153,10 +153,9 @@ function upsertKeyOps(homeId: string, epoch: number, keys: SealedKeyUpload[], se
  *
  * At keyEpoch 0 this doubles as the ACTIVATION candidate list: no HomeKey row
  * can exist pre-activation (every write path requires epoch ≥ 1, and key/disable
- * deletes them all), so it
- * degenerates to "every member/camera with a pubkey, all firstContact". The web
- * activation precheck + key/init seal targets consume exactly that — do not
- * short-circuit to [] here.
+ * deletes them all), so it degenerates to "every member/camera with a pubkey,
+ * all firstContact". The web activation precheck + key/init seal targets
+ * consume exactly that — do not short-circuit to [] here.
  */
 async function computePending(
   homeId: string,
@@ -235,7 +234,6 @@ async function computePending(
 }
 
 export async function keyRoutes(app: FastifyInstance): Promise<void> {
-  // -------------------------------------------------------------- /me/keys
   // Create the caller's key vault, or replace it WITH PROOF. A first vault
   // needs only the session (first-login key generation). Replacing an existing,
   // DIFFERENT vault also needs the account password: otherwise a stolen session
@@ -283,7 +281,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     return { keyVault: toKeyVault(req.user!) };
   });
 
-  // --------------------------------------------------- /homes/:homeId/key (GET)
   app.get("/homes/:homeId/key", { preHandler: requireUser }, async (req): Promise<HomeKeyResponse> => {
     const { homeId } = req.params as { homeId: string };
     await requireMember(req.user!.id, homeId);
@@ -304,7 +301,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     return { epoch: home.keyEpoch, sealedKey: row?.sealedKey ?? null };
   });
 
-  // ------------------------------------------- /homes/:homeId/key/pending (GET)
   app.get(
     "/homes/:homeId/key/pending",
     { preHandler: requireUser },
@@ -317,7 +313,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // -------------------------------------------- /homes/:homeId/key/holders (GET)
   // Owner only: EVERY holder that should receive the key at the next epoch
   // (members + cameras with pubkeys, plus the recorder while consented), so a
   // rotation can seal to all of them in ONE request. The server broadcasts
@@ -335,7 +330,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // -------------------------------------------------- /homes/:homeId/key (POST)
   app.post("/homes/:homeId/key", { preHandler: requireUser }, async (req, reply): Promise<void> => {
     const { homeId } = req.params as { homeId: string };
     const { epoch, keys } = parseBody(submitSealedKeysSchema, req.body);
@@ -357,7 +351,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     reply.code(204);
   });
 
-  // -------------------- /homes/:homeId/key/:holderType/:holderId (DELETE)
   // Owner-only repair path for a poisoned or undecryptable sealed copy: drops
   // ONLY the holder's current-epoch row so they return to /key/pending for an
   // explicit owner re-grant. Older-epoch history rows are kept, so a holder
@@ -398,7 +391,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // --------------------------------------------- /homes/:homeId/key/init (POST)
   app.post(
     "/homes/:homeId/key/init",
     { preHandler: requireUser },
@@ -457,7 +449,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ------------------------------------------- /homes/:homeId/key/rotate (POST)
   app.post(
     "/homes/:homeId/key/rotate",
     { preHandler: requireUser },
@@ -515,7 +506,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ------------------------------------------ /homes/:homeId/key/disable (POST)
   // Owner turns E2EE off. Every sealed copy is dropped, so a later key/init is
   // a fresh activation: first contact for every holder, recorder included (an
   // old recorder row must never let a member re-seal to it without consent).
@@ -553,7 +543,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ----------------------------------- /homes/:homeId/recorder-consent (POST)
   app.post(
     "/homes/:homeId/recorder-consent",
     { preHandler: requireUser },
@@ -630,7 +619,6 @@ export async function keyRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ----------------------------------------------- /e2ee/recorder-identity (GET)
   app.get(
     "/e2ee/recorder-identity",
     { preHandler: requireUser },

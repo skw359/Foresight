@@ -7,9 +7,6 @@
  * libsodium is dynamically imported inside this worker (via ./sodium), so its
  * ~150 KB WASM lands in the worker chunk, never the entry bundle.
  *
- * Instantiated from the main thread with the Vite worker convention:
- *   new Worker(new URL("./vault.worker.ts", import.meta.url), { type: "module" })
- *
  * Protocol: main posts a {id, op, …} request; the worker replies {id, ok, …}.
  * Only base64 crosses the boundary — the raw private key is decoded on the main
  * thread and held there (never persisted).

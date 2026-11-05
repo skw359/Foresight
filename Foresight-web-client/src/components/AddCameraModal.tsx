@@ -47,12 +47,10 @@ export function AddCameraModal({
     }
   }, [homeId]);
 
-  // Generate one on open.
   useEffect(() => {
     generate();
   }, [generate]);
 
-  // Tick the expiry countdown.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);

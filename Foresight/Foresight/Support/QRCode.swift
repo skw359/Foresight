@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import UIKit
 
 enum QRCode {
-    /// Render `string` as a crisp QR `UIImage`, scaled up for on-screen display.
     static func image(from string: String, scale: CGFloat = 12) -> UIImage? {
         let context = CIContext()
         let filter = CIFilter.qrCodeGenerator()

@@ -1,7 +1,3 @@
-/**
- * React auth state, backed by the localStorage helpers in api/auth. Keeps the
- * UI reactive to login/logout (including 401-triggered token clears).
- */
 import {
   createContext,
   useCallback,
@@ -27,7 +23,6 @@ interface AuthState {
   user: UserDTO | null;
   isAuthenticated: boolean;
   signIn: (token: string, user: UserDTO) => void;
-  /** Replace the current user (e.g. after editing the profile). */
   updateUser: (user: UserDTO) => void;
   signOut: () => void;
 }

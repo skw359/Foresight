@@ -1,18 +1,8 @@
 /**
  * Connects the dashboard to a Home's LiveKit room as a VIEWER and exposes the
- * live camera state. This is the realtime backbone of the grid + full-screen
- * views.
- *
- * Responsibilities:
- *  - Mint a viewer token (POST /rt/token) and connect to `home:<homeId>`.
- *  - Enable adaptiveStream + dynacast so unviewed tiles pause and the grid
- *    naturally uses the LOW simulcast layer.
- *  - Track camera participants, their video/audio tracks, and merge in the
- *    `state` / `telemetry` data messages per the protocol contract.
- *  - Send `command` data messages addressed to a target camera identity, and
- *    correlate `ack`s.
- *
- * Commands ride the reliable DATA channel — never the media stream.
+ * live camera state. adaptiveStream + dynacast are on so unviewed tiles pause
+ * and the grid naturally uses the LOW simulcast layer. Commands ride the
+ * reliable DATA channel, never the media stream.
  *
  * Every received packet is schema/version-checked (decodeDataMessage) and its
  * SENDER is authorized (isAuthorizedSender): a camera's state/telemetry is only
@@ -164,7 +154,6 @@ export function useHomeRoom(
   const e2eeRef = useRef(e2eeApi);
   e2eeRef.current = e2eeApi;
 
-  // Pending ack resolvers keyed by command id.
   const pendingAcks = useRef<Map<string, PendingAck>>(new Map());
   // Consecutive failed (re)connects, for the auto-reconnect backoff.
   const retryAttempt = useRef(0);
@@ -210,7 +199,6 @@ export function useHomeRoom(
     [],
   );
 
-  /* ---- merge REST DTOs into live state whenever they change ---- */
   useEffect(() => {
     setCameras((prev) => {
       const next = new Map(prev);
@@ -235,7 +223,6 @@ export function useHomeRoom(
     });
   }, [cameraDtos]);
 
-  /* ---- connect to the room (E2EE-aware) ---- */
   useEffect(() => {
     if (!homeId || !enabled) return;
 
@@ -244,7 +231,6 @@ export function useHomeRoom(
     let e2eeWorker: Worker | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    /** Reconnect on our own after a drop/failure, with capped backoff. */
     function scheduleRetry(why: string) {
       if (cancelled || retryTimer) return;
       const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** retryAttempt.current);
@@ -543,7 +529,6 @@ export function useHomeRoom(
         retryAttempt.current = 0;
         setE2EE({ status: epoch >= 1 ? e2eeStatus : "off", epoch });
 
-        // Seed from participants already in the room.
         for (const p of lkRoom.remoteParticipants.values()) {
           attachParticipant(p);
           for (const pub of p.trackPublications.values()) {
@@ -584,7 +569,6 @@ export function useHomeRoom(
         e2eeWorker.terminate();
       }
       keyProviderRef.current = null;
-      // Fail any in-flight commands.
       for (const [, pending] of pendingAcks.current) {
         pending.resolve({ ok: false, error: "Disconnected" });
       }
@@ -592,7 +576,6 @@ export function useHomeRoom(
     };
   }, [homeId, enabled, patchCamera, patchKnownCamera, reconnectNonce]);
 
-  /* ---- send a command over the data channel ---- */
   const sendCommand = useCallback(
     async (
       cameraId: string,
@@ -683,14 +666,10 @@ export function useHomeRoom(
   };
 }
 
-/* ----------------------------------------------------------------- helpers */
-
-/** Narrow a RemoteTrack to a video track (for attaching to a <video>). */
 export function asVideoTrack(t: RemoteTrack | null): RemoteVideoTrack | null {
   return t && t.kind === Track.Kind.Video ? (t as RemoteVideoTrack) : null;
 }
 
-/** Narrow a RemoteTrack to an audio track. */
 export function asAudioTrack(t: RemoteTrack | null): RemoteAudioTrack | null {
   return t && t.kind === Track.Kind.Audio ? (t as RemoteAudioTrack) : null;
 }

@@ -52,13 +52,11 @@ final class FrameGrabber: NSObject, VideoRenderer, @unchecked Sendable {
         self.track = track
         super.init()
         track.add(videoRenderer: self)
-        // Safety timeout: if no frame arrives, fail gracefully.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             self?.finish(nil)
         }
     }
 
-    // VideoRenderer
     var isAdaptiveStreamEnabled: Bool { false }
     var adaptiveStreamSize: CGSize { .zero }
     func set(size: CGSize) {}
@@ -147,7 +145,6 @@ final class TrackRecorder: NSObject, VideoRenderer, @unchecked Sendable {
         }
     }
 
-    // VideoRenderer
     var isAdaptiveStreamEnabled: Bool { false }
     var adaptiveStreamSize: CGSize { .zero }
     func set(size: CGSize) {}

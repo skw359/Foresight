@@ -1,11 +1,6 @@
 /**
- * Shares the TopBar's loading bar with the route pages.
- *
- * The bar itself lives inside the TopBar so it can sit on the header's bottom
- * edge, but pages anywhere below need to drive it. The provider holds the ref
- * to the live <NavProgress>; the TopBar binds it via `useNavProgressRef()`, and
- * pages call `start()` / `finish()` through `useNavProgress()` (or the
- * `useNavProgressWhileLoading` bridge) without threading refs by hand.
+ * Shares the TopBar's loading bar with the route pages: the TopBar binds the
+ * bar's ref via `useNavProgressRef()`, pages drive it via `useNavProgress()`.
  */
 import {
   createContext,

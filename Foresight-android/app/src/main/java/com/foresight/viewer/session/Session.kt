@@ -86,8 +86,6 @@ class Session(
     val isAuthenticated: Boolean get() = _phase.value is Phase.Authenticated
     val isIdentityUnlocked: Boolean get() = _unlockPhase.value == UnlockPhase.Unlocked
 
-    // MARK: - Login / migration
-
     /**
      * Handle a successful register/login. Persists the token, then sets up the
      * E2EE identity: unlock the returned vault, or run first-login key
@@ -130,8 +128,6 @@ class Session(
             _unlockPhase.value = UnlockPhase.Failed(e.message ?: "Could not unlock your keys.")
         }
     }
-
-    // MARK: - Cold-launch re-unlock (biometric → password)
 
     /**
      * Ensure the E2EE identity key is in memory before an E2EE room connect.
@@ -200,8 +196,6 @@ class Session(
         _isPresentingPasswordUnlock.value = false
         _unlockPhase.value = UnlockPhase.Locked
     }
-
-    // MARK: - Teardown
 
     suspend fun signOut() {
         secureStore.removeToken()

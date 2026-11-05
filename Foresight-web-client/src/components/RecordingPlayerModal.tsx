@@ -21,7 +21,6 @@ interface Props {
   onToast?: (msg: string, error?: boolean) => void;
 }
 
-/** hls.js VOD player for one recording (range playlist). */
 function SpanPlayer({ cameraId, span }: { cameraId: string; span: RecordingSpan }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);

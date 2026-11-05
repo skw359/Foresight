@@ -13,8 +13,7 @@
 //  Keep them in sync if that file is regenerated. IdentityVault performs these
 //  exact same libsodium calls; this test locks the primitives + parameters.
 //
-//  Runs on a Mac only (`xcodebuild test`) — Swift cannot be compiled on the
-//  Windows host where this was written. A Mac must also re-run `xcodegen`.
+//  Runs on a Mac only (`xcodebuild test`). A Mac must also re-run `xcodegen`.
 //
 
 import XCTest

@@ -13,8 +13,6 @@ import { prisma } from "./db.js";
 import { forbidden, unauthorized } from "./lib/errors.js";
 import { sha256Hex } from "./lib/secrets.js";
 
-// ------------------------------------------------------------------- argon2
-
 /**
  * node-argon2 runs on the libuv thread pool (4 threads by default), which the
  * filesystem shares — segment serving and clip I/O. Unbounded concurrent
@@ -57,8 +55,6 @@ export async function burnPasswordCheck(password: string): Promise<void> {
   dummyHash ??= argon2.hash("foresight-timing-equalizer");
   await verifyPassword(await dummyHash, password);
 }
-
-// ------------------------------------------------------------------ sessions
 
 interface SessionClaims extends jwt.JwtPayload {
   sub: string;
@@ -130,8 +126,6 @@ export async function requireServerAdmin(req: FastifyRequest, _reply: FastifyRep
   if (!req.user?.isAdmin) throw forbidden("Only the server administrator can change server settings");
 }
 
-// --------------------------------------------------------- device secrets
-
 /**
  * Device secrets are 256 random bits, so a plain SHA-256 is a sufficient,
  * unguessable lookup key — no argon2 scan needed. The argon2 hash is still
@@ -145,9 +139,9 @@ export const hashSecret = hashPassword;
 
 /**
  * Authenticate a camera by its device secret, optionally scoped to one camera
- * id or one Home. Cameras paired after this release are found with one indexed
- * lookup. Cameras paired earlier have no SHA column yet: they are verified the
- * old way (argon2), once, and then upgraded so every later call is O(1).
+ * id or one Home. Cameras with a SHA are found with one indexed lookup; legacy
+ * cameras without one are verified with argon2 once, then upgraded so every
+ * later call is O(1).
  */
 export async function authenticateDevice(
   deviceSecret: string,

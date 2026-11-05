@@ -91,12 +91,10 @@ export const config = {
   livekitPublicUrl,
   livekitApiKey: required("LIVEKIT_API_KEY"),
   livekitApiSecret: strongSecret("LIVEKIT_API_SECRET"),
-  // Optional last-resort fallback for the QR pairing base URL. The dashboard
-  // setting and per-request auto-detection both take precedence over this, so
-  // it is no longer required to boot.
+  // Optional last-resort fallback for the QR pairing base URL; the dashboard
+  // setting and per-request auto-detection take precedence.
   publicServerUrl: process.env.PUBLIC_SERVER_URL ?? null,
 
-  // ----------------------------------------------------------- Recording
   // The loopback control API of the foresight-recorder process. The webhook
   // and the recording toggle fire arm/disarm here (fire-and-forget). Defaults
   // to the recorder's documented default port.
@@ -110,7 +108,6 @@ export const config = {
   // never on the public one, so a reverse proxy or the LAN can't reach it.
   internalPort: num("INTERNAL_PORT", 3198),
 
-  // ----------------------------------------------------------- Access policy
   // Registration: true = always open, false = always closed (the very first
   // account can still be created), unset = the server admin decides from the
   // dashboard (closed by default once an admin exists).

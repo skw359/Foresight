@@ -2,15 +2,12 @@
 //  PairingStore.swift
 //  Foresight Camera Client
 //
-//  Persists the non-secret half of a pairing across launches (camera id, name,
-//  home id, server + livekit URLs). The `deviceSecret` itself lives only in the
-//  Keychain (see KeychainStore). On launch we hydrate a `PairedCamera` by
-//  combining UserDefaults metadata with the Keychain secret.
+//  Persists the non-secret half of a pairing across launches. The
+//  `deviceSecret` itself lives only in the Keychain (see KeychainStore).
 //
 
 import Foundation
 
-/// A fully-resolved pairing: metadata + the secret needed to mint tokens.
 struct PairedCamera: Equatable {
     var cameraId: String
     var name: String
@@ -27,7 +24,7 @@ enum PairingStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     private static let key = "foresight.pairing.v1"
 
-    /// Codable record of everything *except* the secret.
+    /// Everything *except* the secret.
     private struct Record: Codable {
         var cameraId: String
         var name: String
@@ -37,7 +34,6 @@ enum PairingStore {
         var capabilities: CameraCapabilities
     }
 
-    /// Persist a pairing: metadata to UserDefaults, secret to the Keychain.
     static func save(_ camera: PairedCamera) {
         let record = Record(
             cameraId: camera.cameraId,
@@ -53,7 +49,6 @@ enum PairingStore {
         KeychainStore.saveDeviceSecret(camera.deviceSecret, cameraId: camera.cameraId)
     }
 
-    /// Load the stored pairing if both the metadata and the secret are present.
     static func load() -> PairedCamera? {
         guard let data = defaults.data(forKey: key),
               let record = try? JSONDecoder().decode(Record.self, from: data),
@@ -71,7 +66,6 @@ enum PairingStore {
         )
     }
 
-    /// Forget the pairing entirely (unpair).
     static func clear() {
         if let data = defaults.data(forKey: key),
            let record = try? JSONDecoder().decode(Record.self, from: data) {

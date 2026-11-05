@@ -2,12 +2,12 @@
 //  CameraKeyManager.swift
 //  Foresight Camera Client
 //
-//  The camera's E2EE identity (shared/E2EE.md §7.3). On-device X25519
+//  The camera's E2EE identity (shared/E2EE.md). On-device X25519
 //  keypair used to receive the Home Media Key (HMK): a logged-in member seals
 //  the HMK to this camera's public key, and only the private key here can
 //  unseal it (crypto_box_seal / crypto_box_seal_open, via swift-sodium).
 //
-//  Storage (deliberate, per plan §7.3 / §13 row 6):
+//  Storage (deliberate):
 //    - PRIVATE key  → its own Keychain item, kSecAttrAccessibleAfterFirstUnlock
 //      (a security camera must stream unattended after a reboot). It is NOT
 //      wrapped under `deviceSecret`: both live in the same Keychain protection
@@ -18,9 +18,9 @@
 //  server assigns a cameraId (at /pair/claim), so storage is keyed by a fixed
 //  account rather than by cameraId.
 //
-//  This type is a stateless namespace (like PairingStore / KeychainStore):
-//  the Keychain + UserDefaults are the source of truth, so it is trivially
-//  Sendable and safe to call from any isolation domain.
+//  Stateless namespace (like PairingStore / KeychainStore): the Keychain +
+//  UserDefaults are the source of truth, so it is safe to call from any
+//  isolation domain.
 //
 
 import Foundation
@@ -44,12 +44,10 @@ enum CameraKeyError: LocalizedError {
 }
 
 enum CameraKeyManager {
-    // UserDefaults.standard is documented thread-safe; mirror PairingStore's
-    // suppression of the (overly conservative) Sendable check.
+    // UserDefaults.standard is documented thread-safe; see PairingStore.
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
 
-    // Keychain namespace for the camera's E2EE private key (its own item,
-    // separate from the deviceSecret item in KeychainStore).
+    // Its own item, separate from the deviceSecret item in KeychainStore.
     private static let keychainService = "com.foresight.cameraclient.cameraKey"
     private static let keychainAccount = "cameraIdentity"
 
@@ -81,7 +79,6 @@ enum CameraKeyManager {
         return publicKeyB64
     }
 
-    /// The persisted base64 public key, or nil if no keypair exists yet.
     static var publicKeyBase64: String? {
         defaults.string(forKey: publicKeyKey)
     }
@@ -151,7 +148,7 @@ enum CameraKeyManager {
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
         // Available after first unlock; survives reboots, fits an always-on camera
-        // that must stream unattended (plan §7.3) — but never leaves this device
+        // that must stream unattended — but never leaves this device
         // (excluded from backups), so a restored backup can't impersonate it.
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
@@ -184,10 +181,10 @@ enum CameraKeyManager {
     // MARK: - Startup self-test (DEBUG)
 
     #if DEBUG
-    /// A lightweight self-test proving libsodium's seal/open round-trips and that
-    /// the byte sizes match the locked contract (plan §3.2 / ForesightE2EE). Called
-    /// at startup in DEBUG so a broken libsodium or a size drift fails loudly here
-    /// rather than as silent black video in the field.
+    /// Proves libsodium's seal/open round-trips and that the byte sizes match the
+    /// locked contract (ForesightE2EE). Called at startup in DEBUG so a broken
+    /// libsodium or a size drift fails loudly here rather than as silent black
+    /// video in the field.
     static func assertConstants() {
         let sodium = Sodium()
         guard let keyPair = sodium.box.keyPair() else {

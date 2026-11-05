@@ -92,13 +92,11 @@ private struct LiveViewerContent: View {
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var viewSize: CGSize = .zero
 
-    /// Upper bound for the local frame magnification.
     private static let maxFrameZoom: CGFloat = 6
 
     private var isLandscape: Bool { verticalSizeClass == .compact }
     private var cameras: [LiveCamera] { viewModel.room.cameras }
 
-    /// The clamped magnification currently applied to the rendered frame.
     private var effectiveZoom: CGFloat {
         min(max(frameZoom * pinchScale, 1), Self.maxFrameZoom)
     }

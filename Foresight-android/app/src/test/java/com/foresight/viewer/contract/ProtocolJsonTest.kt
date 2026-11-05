@@ -15,8 +15,6 @@ import org.junit.Test
 
 class ProtocolJsonTest {
 
-    // MARK: - Data messages
-
     @Test
     fun `command message encodes v, type, target, action and args exactly`() {
         val message = CommandMessage(
@@ -110,8 +108,6 @@ class ProtocolJsonTest {
         assertTrue(ForesightCodec.decode(wire.encodeToByteArray()) is StateMessage)
     }
 
-    // MARK: - REST DTOs
-
     @Test
     fun `HomeDTO decodes from pre-E2EE servers (missing keyEpoch) and current ones`() {
         val old = ForesightJson.decodeFromString(
@@ -184,8 +180,6 @@ class ProtocolJsonTest {
         assertEquals(0.5, camera.status.battery!!, 1e-9)
     }
 
-    // MARK: - API request body shapes
-
     @Test
     fun `auth request bodies match the contract exactly`() {
         assertEquals(
@@ -221,8 +215,6 @@ class ProtocolJsonTest {
             ForesightJson.encodeToString(CreateHomeRequest.serializer(), CreateHomeRequest("Lake House")),
         )
     }
-
-    // MARK: - Identity helpers
 
     @Test
     fun `identity helpers mirror realtime ts`() {

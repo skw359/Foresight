@@ -66,8 +66,6 @@ class ApiClient(
         token = newToken
     }
 
-    // MARK: - Auth
-
     suspend fun register(identifier: String, password: String): AuthResponse =
         post("/auth/register", RegisterRequest(identifier, password), RegisterRequest.serializer(),
             AuthResponse.serializer(), authed = false)
@@ -75,8 +73,6 @@ class ApiClient(
     suspend fun login(identifier: String, password: String): AuthResponse =
         post("/auth/login", LoginRequest(identifier, password), LoginRequest.serializer(),
             AuthResponse.serializer(), authed = false)
-
-    // MARK: - Homes
 
     suspend fun listHomes(): List<HomeDTO> =
         get("/homes", ListSerializer(HomeDTO.serializer()))
@@ -87,8 +83,6 @@ class ApiClient(
     suspend fun addMember(homeId: String, identifier: String, role: MemberRole? = null): HomeDTO =
         post("/homes/$homeId/members", AddMemberRequest(identifier, role),
             AddMemberRequest.serializer(), HomeDTO.serializer())
-
-    // MARK: - Cameras
 
     suspend fun listCameras(homeId: String): List<CameraDTO> =
         get("/homes/$homeId/cameras", ListSerializer(CameraDTO.serializer()))
@@ -104,13 +98,9 @@ class ApiClient(
         requestRaw("DELETE", "/cameras/$cameraId", null, null as KSerializer<Unit>?, authed = true)
     }
 
-    // MARK: - Realtime token
-
     suspend fun rtToken(homeId: String, role: ParticipantRole = ParticipantRole.VIEWER): RtTokenResponse =
         post("/rt/token", RtTokenRequest(homeId, role), RtTokenRequest.serializer(),
             RtTokenResponse.serializer())
-
-    // MARK: - E2EE key vault / Home keys (plan §5, §7.4)
 
     /** The caller's encrypted key vault (null ⇒ run first-login key generation). */
     suspend fun getMyKeys(): MeKeysResponse =
@@ -127,8 +117,6 @@ class ApiClient(
      */
     suspend fun homeKey(homeId: String): HomeKeyResponse =
         get("/homes/$homeId/key", HomeKeyResponse.serializer())
-
-    // MARK: - Core
 
     private suspend fun <R> get(path: String, responseSerializer: KSerializer<R>): R =
         request("GET", path, null, null, responseSerializer, authed = true)

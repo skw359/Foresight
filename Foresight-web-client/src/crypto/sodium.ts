@@ -1,31 +1,24 @@
 /**
  * Lazy libsodium-wrappers-sumo loader (shared/E2EE.md §9.2).
  *
- * The ~150 KB gz WASM must NEVER land in the entry bundle. This module reaches
- * libsodium exclusively through a dynamic `import()`, so every importer receives
- * it as a separate async chunk — importing this file statically does NOT pull
- * the WASM into whoever imports it. `await sodium.ready` is awaited once and the
- * ready instance is memoized.
+ * The ~150 KB gz WASM must NEVER land in the entry bundle, so libsodium is
+ * reached only through a dynamic `import()` (a separate async chunk).
  *
- * ── Export-shape note ──
- * The ESM build attaches the crypto_* functions (and `.ready`) to the module's
- * DEFAULT export; only helpers (to_base64 / from_base64 / base64_variants / …)
- * are named exports. So we normalize to the default object. The CJS build used
- * by vitest exposes the same object via `.default` under ESM interop — the
- * `.default ?? mod` fallback covers both.
+ * Export shape: the ESM build attaches the crypto_* functions (and `.ready`) to
+ * the module's DEFAULT export; only helpers (to_base64, base64_variants, ...) are
+ * named exports. The CJS build used by vitest exposes the same object via
+ * `.default`, so `.default ?? mod` covers both.
  *
- * ── base64 note ──
- * Every base64 string in @foresight/contract and the M0 parity vector is
+ * base64: every base64 string in @foresight/contract and the M0 parity vector is
  * STANDARD base64 WITH padding (`base64_variants.ORIGINAL`). libsodium defaults
- * to URLSAFE_NO_PADDING, so the variant MUST be passed explicitly on every call
- * — that is the whole reason the b64 helpers below exist.
+ * to URLSAFE_NO_PADDING, so the variant MUST be passed explicitly on every call;
+ * that is why the b64 helpers below exist.
  */
 
 export type Sodium = typeof import("libsodium-wrappers-sumo");
 
 let sodiumPromise: Promise<Sodium> | null = null;
 
-/** Load + initialize libsodium once (lazy, dynamic import, memoized). */
 export function loadSodium(): Promise<Sodium> {
   if (!sodiumPromise) {
     sodiumPromise = import("libsodium-wrappers-sumo").then(async (mod) => {

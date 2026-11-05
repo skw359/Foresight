@@ -21,7 +21,6 @@ livekit.example.com {
 	respond 404
 }
 
-# ---------------------------------------------------------------------------
 # ALTERNATIVE — use this block INSTEAD of the one above if this machine is NOT
 # reachable from the internet on ports 80/443 (LAN-only, or sitting behind
 # another proxy). The normal HTTP/TLS-ALPN challenge can't run in that case, so prove

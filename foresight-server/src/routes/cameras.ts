@@ -105,8 +105,7 @@ export async function cameraRoutes(app: FastifyInstance): Promise<void> {
       // E2EE consent gate: once a Home has activated E2EE (keyEpoch ≥ 1), the
       // recorder can only decrypt if the owner has granted it consent (a recorder
       // HomeKey row at the current epoch). Enabling recording without consent is
-      // refused. For keyEpoch == 0 Homes (E2EE not activated) behavior is
-      // UNCHANGED — deploying E2EE changes nothing until a Home opts in
+      // refused. Homes with keyEpoch == 0 (E2EE not activated) are unaffected
       // (shared/E2EE.md §6/§13).
       if (enabled) {
         const home = await prisma.home.findUnique({

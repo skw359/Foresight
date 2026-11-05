@@ -2,9 +2,8 @@
 //  QRScannerView.swift
 //  Foresight Camera Client
 //
-//  SwiftUI wrapper around an AVCaptureSession + AVCaptureMetadataOutput that
-//  scans QR codes. Emits the decoded string via `onCode`. Designed for the
-//  pairing screen: it reads the QR the dashboard renders for "Add Camera".
+//  SwiftUI wrapper around an AVCaptureSession that scans QR codes and emits the
+//  decoded string via `onCode`.
 //
 
 import AVFoundation
@@ -111,7 +110,6 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         MainActor.assumeIsolated {
             guard !hasReported else { return }
             hasReported = true
-            // Haptic confirmation.
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             sessionQueue.async { [weak self] in
                 self?.session.stopRunning()

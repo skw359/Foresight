@@ -66,7 +66,6 @@ export function buildHlsArgs(opts: HlsArgsOptions): string[] {
     "-hide_banner",
     "-loglevel",
     "warning",
-    // --- input: raw I420 video on stdin at a fixed geometry ---
     "-f",
     "rawvideo",
     "-pix_fmt",
@@ -77,7 +76,6 @@ export function buildHlsArgs(opts: HlsArgsOptions): string[] {
     String(opts.fps),
     "-i",
     "pipe:0",
-    // --- encode ---
     // Normalize to the target geometry FIRST: the input geometry follows
     // whatever layer the SFU forwards, the output must not.
     "-vf",
@@ -93,7 +91,6 @@ export function buildHlsArgs(opts: HlsArgsOptions): string[] {
     // playable and prunable, and range playlists can start on any segment.
     "-force_key_frames",
     `expr:gte(t,n_forced*${opts.segmentSeconds})`,
-    // --- HLS output ---
     "-f",
     "hls",
     "-hls_time",

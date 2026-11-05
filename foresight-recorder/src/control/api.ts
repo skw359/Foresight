@@ -42,7 +42,6 @@ export async function startControlApi(
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
-  // Shared-secret guard on every route.
   app.addHook("preHandler", async (req, reply) => {
     if (!secretsEqual(req.headers["x-recorder-secret"], config.sharedSecret)) {
       await reply.code(401).send({ error: "unauthorized", message: "Invalid recorder secret" });
@@ -69,7 +68,6 @@ export async function startControlApi(
     return { ok: true };
   });
 
-  // E2EE: owner rotated the Home key (membership/consent change) — pull fresh keys.
   app.post("/control/rekey", async (req, reply) => {
     const parsed = rekeyBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "bad_request" });

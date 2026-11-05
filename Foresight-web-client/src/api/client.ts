@@ -1,13 +1,7 @@
 /**
- * Typed REST client for the Foresight backend.
- *
- * Every shape comes from `@foresight/contract` — the locked protocol. The base
- * URL is configurable via VITE_API_URL; by default a production build talks to
- * the SAME ORIGIN that served it (the backend serves the dashboard), and the
- * Vite dev server talks to port 3199 on whatever host the page was opened on.
- * The stored JWT is attached as `Authorization: Bearer <token>` on user requests.
- *
- * The LiveKit ws URL is never hardcoded; it is read from RtTokenResponse.
+ * Typed REST client for the Foresight backend; every shape comes from
+ * `@foresight/contract`. The LiveKit ws URL is never hardcoded; it is read from
+ * RtTokenResponse.
  */
 import type {
   AddMemberRequest,
@@ -164,8 +158,6 @@ function safeJson(text: string): unknown {
   }
 }
 
-/* ----------------------------------------------------------------- Auth */
-
 export function register(req: RegisterRequest): Promise<AuthResponse> {
   return request<AuthResponse>("/auth/register", {
     method: "POST",
@@ -216,8 +208,6 @@ export async function changePassword(req: ChangePasswordRequest): Promise<void> 
 export function updateProfile(req: UpdateProfileRequest): Promise<UserDTO> {
   return request<UserDTO>("/me", { method: "PATCH", body: req });
 }
-
-/* ---------------------------------------------------------------- Homes */
 
 export function listHomes(signal?: AbortSignal): Promise<HomeDTO[]> {
   return request<HomeDTO[]>("/homes", { signal });
@@ -289,8 +279,6 @@ export function transferHomeOwnership(
   });
 }
 
-/* -------------------------------------------------------------- Cameras */
-
 export function listCameras(
   homeId: string,
   signal?: AbortSignal,
@@ -329,9 +317,6 @@ export function deleteCamera(cameraId: string): Promise<void> {
   return request<void>(`/cameras/${cameraId}`, { method: "DELETE" });
 }
 
-/* ------------------------------------------------------------- Recording */
-
-/** Toggle 24/7 server-side recording for a camera. */
 export function setRecording(
   cameraId: string,
   enabled: boolean,
@@ -415,8 +400,6 @@ export async function downloadClip(
   a.remove();
 }
 
-/* --------------------------------------------------- Realtime (LiveKit) */
-
 /**
  * Mint a LiveKit access token. Viewers authenticate via the bearer session;
  * cameras must pass a deviceSecret. Returns the ws URL + room + identity.
@@ -430,11 +413,9 @@ export function rtToken(req: RtTokenRequest): Promise<RtTokenResponse> {
   });
 }
 
-/* ------------------------------------------------------------------ E2EE keys
- * All session/owner-authed. The server stores/serves opaque base64 blobs only —
- * it performs no crypto (shared/E2EE.md §7.1). Sealing/unsealing/KDF all
- * happen client-side under @foresight/contract's locked constants.
- */
+// E2EE keys: the server stores/serves opaque base64 blobs only and performs no
+// crypto (shared/E2EE.md §7.1). Sealing/unsealing/KDF happen client-side under
+// @foresight/contract's locked constants.
 
 /** GET /me/keys — the caller's encrypted key vault (null ⇒ run first-login keygen). */
 export function getMyKeys(signal?: AbortSignal): Promise<MeKeysResponse> {
@@ -512,14 +493,11 @@ export function getRecorderIdentity(signal?: AbortSignal): Promise<RecorderIdent
   return request<RecorderIdentityResponse>("/e2ee/recorder-identity", { signal });
 }
 
-/* -------------------------------------------------------------- Settings */
-
 /** Fetch server-wide settings (and the URL the server auto-detected for us). */
 export function getServerSettings(signal?: AbortSignal): Promise<ServerSettings> {
   return request<ServerSettings>("/settings", { signal });
 }
 
-/** Update server-wide settings; returns the saved state. */
 export function updateServerSettings(
   req: UpdateServerSettingsRequest,
 ): Promise<ServerSettings> {

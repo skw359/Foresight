@@ -18,13 +18,11 @@ final class LiveCamera: ObservableObject, Identifiable {
     /// Last-known REST metadata (name, capabilities, etc.).
     @Published var info: CameraDTO
 
-    /// The remote participant publishing this camera, once present in the room.
     @Published var participant: RemoteParticipant?
 
     /// The subscribed video track (nil until subscribed / while paused).
     @Published var videoTrack: VideoTrack?
 
-    /// Whether the camera participant is currently connected to the room.
     @Published var isConnected: Bool = false
 
     /// True when LiveKit reports we can't (yet) decrypt this camera's E2EE frames

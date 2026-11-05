@@ -2,23 +2,18 @@
 //  DeviceTelemetry.swift
 //  Foresight Camera Client
 //
-//  Samples device health for the periodic `telemetry` heartbeat and for the
-//  on-screen overlay:
-//    - battery level + charging state (UIDevice)
-//    - thermal state (ProcessInfo) → contract ThermalState
-//    - Wi-Fi reachability + approximate "bars" (NWPathMonitor)
+//  Samples device health (battery, thermal state, Wi-Fi) for the periodic
+//  `telemetry` heartbeat and the on-screen overlay.
 //
 //  iOS does not expose true RSSI without private API, so Wi-Fi `level` is an
-//  honest approximation: 0 when not on Wi-Fi, otherwise a coarse bar count
-//  derived from path constraints. `rssi`/`ssid` are left nil per the contract's
-//  optionality.
+//  approximation: a coarse bar count derived from path constraints.
+//  `rssi`/`ssid` are left nil per the contract's optionality.
 //
 
 import Foundation
 import Network
 import UIKit
 
-/// A single immutable snapshot of device health.
 struct TelemetrySnapshot: Equatable {
     var battery: Double?      // 0.0 ... 1.0, or nil if unknown
     var charging: Bool?
@@ -54,7 +49,7 @@ final class DeviceTelemetry: ObservableObject {
         monitor.cancel()
     }
 
-    /// Recompute the snapshot from current OS state. Cheap; safe to call on a timer.
+    /// Cheap; safe to call on a timer.
     func refresh() {
         let device = UIDevice.current
         let level = device.batteryLevel            // -1.0 if unknown
@@ -78,7 +73,7 @@ final class DeviceTelemetry: ObservableObject {
 
     // MARK: Helpers
 
-    /// Approximate Wi-Fi bars. Returns nil when the active path is not Wi-Fi.
+    /// Returns nil when the active path is not Wi-Fi.
     private func wifiInfo(from path: NWPath?) -> WifiInfo? {
         guard let path, path.status == .satisfied, path.usesInterfaceType(.wifi) else {
             return nil
@@ -91,7 +86,6 @@ final class DeviceTelemetry: ObservableObject {
         return WifiInfo(level: level, rssi: nil, ssid: nil)
     }
 
-    /// Map ProcessInfo thermal state onto the contract enum.
     static func thermalState() -> ThermalState {
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: return .nominal

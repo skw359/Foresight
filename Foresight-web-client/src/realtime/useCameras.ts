@@ -1,8 +1,4 @@
-/**
- * Loads + periodically refreshes the REST camera registry for a Home. The
- * realtime layer (useHomeRoom) merges these DTOs with live state. Polling keeps
- * names/membership fresh; live status comes over the data channel.
- */
+// REST camera registry only; live status comes over the data channel (see useHomeRoom).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CameraDTO } from "@foresight/contract";
 

@@ -206,8 +206,6 @@ class E2EEParityTest {
         assertEquals(sample["plaintextUtf8"]!!.jsonPrimitive.content, plaintext.decodeToString())
     }
 
-    // MARK: - Vault lifecycle on the same engine
-
     @Test
     fun `createVault round-trips through unlock and rejects a wrong password`() = runBlocking {
         val fresh = IdentityVault(sodium)

@@ -30,8 +30,6 @@ import java.nio.ByteBuffer
 import livekit.org.webrtc.VideoFrame
 import livekit.org.webrtc.VideoSink
 
-// MARK: - I420 helpers
-
 /** Copy an I420 buffer into a packed NV21 byte array (Y plane, then interleaved VU). */
 private fun i420ToNv21(i420: VideoFrame.I420Buffer): ByteArray {
     val width = i420.width
@@ -75,8 +73,6 @@ private fun copyPlane(
         }
     }
 }
-
-// MARK: - Snapshot (single frame)
 
 /**
  * Attaches to a VideoTrack, captures the next frame as a Bitmap (rotated
@@ -130,8 +126,6 @@ class FrameGrabber(
         onImage(bitmap)
     }
 }
-
-// MARK: - Recording (track → mp4)
 
 /**
  * Records an incoming VideoTrack to an .mp4 (H.264, video-only in v1). Frames

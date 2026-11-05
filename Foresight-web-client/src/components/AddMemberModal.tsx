@@ -1,8 +1,6 @@
 /**
- * Add an existing user to a Home by their account identifier. This is an
- * owner-only action, so the trigger is only rendered for owners (HomePage gates
- * on the viewer's role). Mirrors the CreateHomeModal pattern: a single field,
- * busy/error handling, and the shared <Modal>.
+ * Add an existing user to a Home by account identifier. Owner-only; HomePage
+ * gates the trigger on the viewer's role.
  */
 import { useState, type FormEvent } from "react";
 import type { HomeDTO, MemberRole } from "@foresight/contract";

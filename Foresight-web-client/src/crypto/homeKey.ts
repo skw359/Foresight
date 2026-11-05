@@ -1,14 +1,13 @@
 /**
  * Home Media Key (HMK) sealing helpers + identity fingerprint (§3, §10.5).
  *
- * These are microsecond operations (crypto_box_seal / _open, base64, SHA-256),
- * so per the plan they may run on the MAIN thread — but still exclusively via
- * the lazy sodium module (never a static libsodium import). The Argon2id KDF is
- * the only thing that must be off-thread (see vault.worker.ts).
+ * These are cheap enough for the main thread, but must still go through the lazy
+ * sodium module (never a static libsodium import). Only the Argon2id KDF must be
+ * off-thread (see vault.worker.ts).
  *
- * Key insight used throughout: the string LiveKit's `setKey` receives is EXACTLY
- * `base64(HMK)` (§3.2). So an unsealed HMK's base64 form is simultaneously the
- * value we cache AND the value we hand to LiveKit — one string, no re-derivation.
+ * The string LiveKit's `setKey` receives is EXACTLY `base64(HMK)` (§3.2), so an
+ * unsealed HMK's base64 form is both the cached value and the value handed to
+ * LiveKit.
  */
 import { E2EE_HMK_BYTES, E2EE_SEALED_HMK_BYTES } from "@foresight/contract";
 

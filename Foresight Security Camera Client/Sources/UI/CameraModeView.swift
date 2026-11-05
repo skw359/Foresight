@@ -2,16 +2,14 @@
 //  CameraModeView.swift
 //  Foresight Camera Client
 //
-//  The camera-mode screen shown once a device is paired. It renders the live
-//  publisher preview (exactly what viewers receive), surfaces stream status and
-//  the current camera state (torch/lens/zoom/quality/recording), and exposes the
-//  Go Live / Stop controls plus unpair. Commands themselves arrive over LiveKit
+//  The camera-mode screen: live publisher preview, stream status, camera state
+//  read-out, and Go Live / Stop / unpair controls. Commands arrive over LiveKit
 //  and are applied by RealtimeSession — this view is a read-out + lifecycle UI.
 //
-//  Power/heat (REL-02): a phone streaming 24/7 shouldn't also render a
-//  full-screen preview at full brightness for nobody. After `dimAfter` seconds
-//  without a touch while streaming, the preview is removed (it stops rendering;
-//  publishing is unaffected) and the screen dims; a tap brings both back.
+//  Power/heat: a phone streaming 24/7 shouldn't also render a full-screen preview
+//  at full brightness for nobody. After `dimAfter` seconds without a touch while
+//  streaming, the preview is removed (publishing is unaffected) and the screen
+//  dims; a tap brings both back.
 //
 
 import Combine
@@ -27,7 +25,7 @@ struct CameraModeView: View {
     @State private var busy = false
     @State private var showUnpairConfirm = false
 
-    // Power saver (REL-02).
+    // Power saver.
     @State private var dimmed = false
     @State private var lastInteraction = Date()
     @State private var savedBrightness: CGFloat?
@@ -156,8 +154,7 @@ struct CameraModeView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                 largeStatus
-                // Surfaces the "Waiting for key…" awaiting-key state (and any other
-                // offline reason) beneath the big status label.
+                // Surfaces the "Waiting for key…" state (and any other offline reason).
                 if let detail = session.status.detail {
                     Text(detail)
                         .font(.caption)
@@ -172,7 +169,6 @@ struct CameraModeView: View {
         .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    /// Prominent streaming status: large text + a colored dot (or spinner).
     private var largeStatus: some View {
         HStack(spacing: 8) {
             if isConnecting {

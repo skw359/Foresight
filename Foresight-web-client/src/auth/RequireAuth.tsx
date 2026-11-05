@@ -1,4 +1,3 @@
-/** Redirects to /login when the user is not authenticated. */
 import { Navigate, useLocation } from "react-router-dom";
 import { useMemo, type ReactNode } from "react";
 

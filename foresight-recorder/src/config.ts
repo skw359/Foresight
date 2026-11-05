@@ -81,20 +81,17 @@ function defaultFfmpegPath(): string {
 }
 
 export const config = {
-  // ----------------------------------------------------------- LiveKit
   // Same values the server uses. The recorder is trusted + co-located, so it
   // holds the API key/secret and mints its own hidden-subscriber tokens.
   livekitUrl: required("LIVEKIT_URL"),
   livekitApiKey: required("LIVEKIT_API_KEY"),
   livekitApiSecret: strongSecret("LIVEKIT_API_SECRET"),
 
-  // ----------------------------------------------------------- Control API
   port: num("RECORDER_PORT", 3399),
   // Required header on every control + reconcile call (symmetric with the
   // server's RECORDER_SHARED_SECRET).
   sharedSecret: strongSecret("RECORDER_SHARED_SECRET"),
 
-  // ----------------------------------------------------------- Media / ffmpeg
   ffmpegPath: process.env.FFMPEG_PATH
     ? resolveExecutable(process.env.FFMPEG_PATH)
     : defaultFfmpegPath(),
@@ -126,7 +123,6 @@ export const config = {
   audioSampleRate: num("RECORD_AUDIO_SAMPLE_RATE", 48000),
   audioChannels: num("RECORD_AUDIO_CHANNELS", 1),
 
-  // ----------------------------------------------------------- Retention
   retentionDays: num("RETENTION_DAYS", 14),
   retentionMaxGb: num("RETENTION_MAX_GB", 500),
   minFreeGb: num("MIN_FREE_GB", 25),
@@ -140,21 +136,18 @@ export const config = {
     | "oldest",
   retentionIntervalMs: num("RETENTION_INTERVAL_MS", 10 * 60 * 1000),
 
-  // ----------------------------------------------------------- Consolidation
   // Finished UTC days are consolidated into one day_<YYYYMMDD>.ts (plus a
   // .json byte index) per camera, replacing thousands of 6-second segments
   // (see storage/consolidate.ts). The live day is never touched.
   consolidateEnabled: bool("CONSOLIDATE_ENABLED", true),
   consolidateIntervalMs: num("CONSOLIDATE_INTERVAL_MS", 60 * 60 * 1000),
 
-  // ----------------------------------------------------------- Reconcile
   // Where to ask "which cameras should be recording?" (server internal API).
   // The server's INTERNAL API listener (127.0.0.1:INTERNAL_PORT, default 3198)
   // — not its public port.
   serverUrl: (process.env.SERVER_URL ?? "http://127.0.0.1:3198").replace(/\/$/, ""),
   reconcileIntervalMs: num("RECONCILE_INTERVAL_MS", 60 * 1000),
 
-  // ----------------------------------------------------------- E2EE (Model B)
   // The recorder's X25519 identity (sk||pk, base64). The secret key at rest IS
   // the consent boundary (plan §8.3) — keep it OUTSIDE recordingsDir (which the
   // server reads back) and 0600. Default: the recorder package's own data/ dir.

@@ -2,12 +2,8 @@
 //  PairingView.swift
 //  Foresight Camera Client
 //
-//  The pairing flow:
-//    1. Request camera + mic permission.
-//    2. Scan the QR the dashboard shows (a PairingTicket JSON).
-//    3. Detect this device's CameraCapabilities.
-//    4. Let the user name the camera AND confirm the server it will trust.
-//    5. POST /pair/claim → store deviceSecret + metadata → enter camera mode.
+//  The pairing flow: permissions → scan the dashboard's QR (a PairingTicket JSON)
+//  → detect capabilities → name the camera AND confirm the server → claim.
 //
 //  The camera trusts the QR's server URL permanently (every later token mint
 //  sends its device secret there), so the user must explicitly confirm that
@@ -63,13 +59,11 @@ final class PairingViewModel: ObservableObject {
     private(set) var ticket: PairingTicket?
     private(set) var capabilities: CameraCapabilities?
 
-    /// Ask for AV permissions; advance to scanning if granted.
     func requestPermissions(using model: AppModel) async {
         let granted = await model.requestPermissions()
         step = granted ? .scanning : .failed("Camera and microphone access are required to pair and stream.")
     }
 
-    /// Decode a scanned QR payload into a PairingTicket and detect capabilities.
     func didScan(_ payload: String) {
         guard case .scanning = step else { return }
         guard let data = payload.data(using: .utf8),
@@ -103,7 +97,6 @@ final class PairingViewModel: ObservableObject {
         step = .naming
     }
 
-    /// Claim the pairing with the chosen name.
     func claim(using model: AppModel) async {
         guard let ticket, let capabilities, serverConfirmed else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,14 +109,13 @@ final class PairingViewModel: ObservableObject {
         let backend = BackendClient(serverUrl: ticket.serverUrl)
         do {
             // Generate (or reuse) the camera's E2EE identity BEFORE claiming and
-            // send its public key in the claim (plan §6 pair-camera). The private
-            // key never leaves the Keychain.
+            // send its public key in the claim. The private key never leaves the
+            // Keychain.
             let cameraPublicKey = CameraKeyManager.loadOrCreateKeypair()
             let response = try await backend.claimPairing(token: ticket.token, name: trimmed,
                                                           capabilities: capabilities,
                                                           cameraPublicKey: cameraPublicKey)
-            // The server now holds our pubkey → skip the existing-camera migration,
-            // and remember whether the Home is already E2EE-activated.
+            // The server now holds our pubkey → skip the existing-camera migration.
             CameraKeyManager.markPubkeyRegistered()
             CameraKeyManager.homeKeyPending = response.homeKeyPending ?? false
             let paired = PairedCamera(
@@ -242,7 +234,6 @@ struct PairingView: View {
                 }
                 .ignoresSafeArea()
 
-                // Reticle overlay.
                 RoundedRectangle(cornerRadius: 24)
                     .stroke(Color.white.opacity(0.9), lineWidth: 3)
                     .frame(width: 240, height: 240)
@@ -327,7 +318,6 @@ struct PairingView: View {
     }
 }
 
-/// Compact read-out of detected capabilities shown during naming.
 private struct CapabilitySummary: View {
     let capabilities: CameraCapabilities
 

@@ -94,8 +94,6 @@ export function liveMediaSequence(first: SegmentRef, all: SegmentRef[]): number 
   return Math.floor(first.epoch / 86_400) * SEQUENCE_PER_DAY + index;
 }
 
-// ------------------------------------------------------------- clip exports
-
 /** Lifetime of a signed clip-download URL. */
 const CLIP_URL_TTL_SECONDS = 300;
 
@@ -409,17 +407,6 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // Remux a [from,to] range into a single downloadable MP4 (one-shot ffmpeg).
-  // Segment bytes are piped into ffmpeg's stdin in epoch order — consolidated
-  // segments as byte windows of their day file, loose ones whole — so no
-  // temp concat-list file and no reliance on every segment being its own file.
-  //
-  // An MP4 track declares ONE resolution, so a range whose segments disagree
-  // cannot be copied: the header would claim the first piece's size for the whole
-  // clip (footage recorded before the recorder pinned its layer runs anywhere
-  // from 320x180 to 1080p within a single day). planClipEncode reads each piece's
-  // SPS to tell the two cases apart — uniform ranges still stream out with
-  // `-c copy`, mixed ones are re-encoded onto the range's largest geometry.
   // Mint a short-lived, range-scoped download URL for clip.mp4 so the browser
   // can stream the file to disk with a plain link (no Authorization header, no
   // in-memory Blob of the whole MP4).
@@ -454,11 +441,9 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
   // temp concat-list file and no reliance on every segment being its own file.
   //
   // An MP4 track declares ONE resolution, so a range whose segments disagree
-  // cannot be copied: the header would claim the first piece's size for the whole
-  // clip (footage recorded before the recorder pinned its layer runs anywhere
-  // from 320x180 to 1080p within a single day). planClipEncode reads each piece's
-  // SPS to tell the two cases apart — uniform ranges still stream out with
-  // `-c copy`, mixed ones are re-encoded onto the range's largest geometry.
+  // cannot be copied. planClipEncode reads each piece's SPS to tell the two
+  // cases apart — uniform ranges stream out with `-c copy`, mixed ones are
+  // re-encoded onto the range's largest geometry (see lib/clipGeometry.ts).
   //
   // Failure is never reported as success: ffmpeg's output is held back from the
   // response until its exit status is known, and a non-zero exit destroys the

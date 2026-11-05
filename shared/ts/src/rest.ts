@@ -10,7 +10,6 @@
 
 import type { EncryptedKeyVault, SealedKey } from "./e2ee.js";
 
-/** Role of a user within a Home. */
 export type MemberRole = "owner" | "member";
 
 /** Role a participant plays inside a LiveKit room. */
@@ -55,13 +54,9 @@ export interface CameraCapabilities {
   maxDigitalZoom: number;
   /** Whether the active camera supports torch/flashlight (usually rear only). */
   torch: boolean;
-  /** Maximum capture resolution. */
   maxResolution: { width: number; height: number };
-  /** Whether the device can publish microphone audio. */
   supportsAudio: boolean;
 }
-
-/* ------------------------------------------------------------------- Auth */
 
 export interface RegisterRequest {
   /** Email OR username — a single field, the user's choice. */
@@ -132,8 +127,6 @@ export interface UpdateProfileRequest {
   firstName: string | null;
 }
 
-/* ------------------------------------------------------------------ Homes */
-
 export interface CreateHomeRequest {
   name: string;
 }
@@ -200,8 +193,6 @@ export interface TransferOwnershipRequest {
   keepOwnership?: boolean;
 }
 
-/* -------------------------------------------------------------- Account */
-
 /**
  * Result of DELETE /me when it cannot proceed because the caller is the sole
  * owner of one or more Homes that still have other members. The account is left
@@ -216,8 +207,6 @@ export interface BlockingHomeRef {
 export interface AccountDeletionBlocked {
   blockingHomes: BlockingHomeRef[];
 }
-
-/* ---------------------------------------------------------------- Cameras */
 
 /** Latest known health snapshot for a camera (derived from telemetry). */
 export interface CameraStatus {
@@ -245,8 +234,6 @@ export interface CameraDTO {
 export interface RenameCameraRequest {
   name: string;
 }
-
-/* -------------------------------------------------------------- Recording */
 
 /** Body for POST /cameras/:cameraId/recording — the "record 24/7" toggle. */
 export interface SetRecordingRequest {
@@ -304,8 +291,6 @@ export interface RecordingCoverage {
   totalBytes: number;
 }
 
-/* ---------------------------------------------------------------- Pairing */
-
 /**
  * Payload encoded into the QR code shown by a viewer (web/iOS) when adding a
  * camera. The camera client scans it and calls POST /pair/claim.
@@ -342,8 +327,6 @@ export interface ClaimPairingResponse {
   homeKeyPending: boolean;
 }
 
-/* --------------------------------------------------- Realtime (LiveKit) token */
-
 export interface RtTokenRequest {
   homeId: string;
   role: ParticipantRole;
@@ -372,8 +355,6 @@ export interface RtTokenResponse {
    */
   sealedHomeKey: SealedKey | null;
 }
-
-/* --------------------------------------------------------------- Settings */
 
 /**
  * Server-wide settings. Readable by any signed-in user; only the server admin
@@ -412,8 +393,6 @@ export interface UpdateServerSettingsRequest {
   registrationOpen?: boolean;
 }
 
-/* ------------------------------------------------------------------ Audit */
-
 /** Who performed an audited action. */
 export type AuditActorType = "user" | "camera" | "system";
 
@@ -444,8 +423,6 @@ export interface AuditLogResponse {
   nextBefore: string | null;
 }
 
-/* ------------------------------------------------------- Recording health */
-
 /** The recorder's live state for one camera (see foresight-recorder /status). */
 export type RecorderCameraState =
   | "idle"
@@ -474,8 +451,6 @@ export interface RecordingHealthResponse {
   cameras: CameraRecordingHealth[];
 }
 
-/* ------------------------------------------------------------ Clip export */
-
 /** POST /recordings/:cameraId/clip-url?from&to → a short-lived download URL. */
 export interface ClipUrlResponse {
   /**
@@ -486,8 +461,6 @@ export interface ClipUrlResponse {
   url: string;
   expiresAt: string;
 }
-
-/* ------------------------------------------------------- Camera self-unpair */
 
 /** Body for POST /cameras/:cameraId/unpair — device-authenticated self-removal. */
 export interface UnpairCameraRequest {

@@ -29,7 +29,6 @@ struct AuthView: View {
     @State private var errorMessage: String?
     @State private var showSettings = false
 
-    // Typewriter animation state
     @State private var displayedText = ""
     @State private var textOpacity = 0.0
     @State private var yOffset: CGFloat = 20
@@ -37,7 +36,6 @@ struct AuthView: View {
     @State private var hasStartedTypingAnimation = false
     @State private var typingAnimationCompleted = false
 
-    // Phase tracking
     private enum AnimationPhase {
         case typingBrand      // "Welcome to Foresight."
         case deletingBrand    // deleting "Foresight."
@@ -57,7 +55,7 @@ struct AuthView: View {
     private let brandWord = "Foresight."
     private let tagline = "the first-class home security platform."
     // "first-class" starts at index 4, ends at index 15 (exclusive) in tagline
-    private let firstClassRange = (4, 15) // "first-class"
+    private let firstClassRange = (4, 15)
 
     /// Journey's muted panel-text color.
     private let mutedText = Color(hex: "#3A3A3C")
@@ -68,7 +66,6 @@ struct AuthView: View {
             && !isSubmitting
     }
 
-    // Returns attributed-style segments for the current displayedText + phase
     private var textSegments: [(String, Color)] {
         switch phase {
         case .typingBrand, .deletingBrand:
@@ -82,17 +79,14 @@ struct AuthView: View {
             return [(baseText, .white), (brandPart, Theme.accent)]
 
         case .typingTagline, .done:
-            // displayedText = "Welcome to " + partial/full tagline
             let taglinePart = String(displayedText.dropFirst(baseText.count))
             return [(baseText, .white)] + taglineSegments(typed: taglinePart)
 
         }
     }
 
-    // Splits the typed portion of the tagline into white/accent segments
     private func taglineSegments(typed: String) -> [(String, Color)] {
         // tagline = "the first-class home security platform."
-        // "first-class" = indices 4..<15
         let lo = firstClassRange.0
         let hi = firstClassRange.1
         let len = typed.count
@@ -100,16 +94,13 @@ struct AuthView: View {
         var segments: [(String, Color)] = []
 
         if len <= lo {
-            // Haven't reached "first-class" yet
             segments.append((typed, .white))
         } else if len <= hi {
-            // Inside "first-class"
             let before = String(typed.prefix(lo))
             let colored = String(typed.dropFirst(lo))
             if !before.isEmpty { segments.append((before, .white)) }
             if !colored.isEmpty { segments.append((colored, Theme.accent)) }
         } else {
-            // Past "first-class"
             let before = String(typed.prefix(lo))
             let colored = String(typed.prefix(hi).dropFirst(lo))
             let after = String(typed.dropFirst(hi))

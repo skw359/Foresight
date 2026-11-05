@@ -200,7 +200,6 @@ export function HomeSettingsPage() {
               </div>
             )}
 
-            {/* --------------------------- General (app) --------------------------- */}
             <section role="tabpanel" hidden={tab !== "general"}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 18 }}>
                 These settings apply to your account and this device — across
@@ -211,7 +210,6 @@ export function HomeSettingsPage() {
 
             {home !== null && isOwner && (
               <>
-                {/* ------------------------------ Home ------------------------------ */}
                 <section role="tabpanel" hidden={tab !== "home"}>
                   <div className="field">
                     <span>Home</span>
@@ -239,7 +237,6 @@ export function HomeSettingsPage() {
                   </div>
                 </section>
 
-                {/* ---------------------------- Security ---------------------------- */}
                 <section role="tabpanel" hidden={tab !== "security"}>
                   <HomeSecurityPanel
                     home={home}
@@ -249,7 +246,6 @@ export function HomeSettingsPage() {
                   />
                 </section>
 
-                {/* ---------------------------- Activity ---------------------------- */}
                 <section role="tabpanel" hidden={tab !== "activity"}>
                   {tab === "activity" && <AuditLogPanel homeId={home.id} />}
                 </section>

@@ -45,8 +45,6 @@ export const THEME = {
   faint: [110, 110, 118],
 } as const satisfies Record<string, Rgb>;
 
-// ---------------------------------------------------------------- capability
-
 type ColorMode = "none" | "ansi256" | "truecolor";
 
 function envFlag(name: string): string {
@@ -92,8 +90,6 @@ export function prettyEnabled(stream: { isTTY?: boolean } = process.stdout): boo
   return Boolean(stream.isTTY);
 }
 
-// -------------------------------------------------------------------- color
-
 const RESET = "\x1b[0m";
 
 /** Nearest xterm-256 index for an RGB triple (6x6x6 cube + gray ramp). */
@@ -136,8 +132,6 @@ export function chip(bgc: Rgb, fgc: Rgb, s: string): string {
 export function bold(s: string): string {
   return sgr("1", s);
 }
-
-// ------------------------------------------------------------------ helpers
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
@@ -215,8 +209,6 @@ function clockOf(time: number | string | undefined): string {
   const p = (n: number, w = 2): string => String(n).padStart(w, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
-
-// ------------------------------------------------------------------- fields
 
 /** Keys consumed by the line layout itself, never repeated in the field tail. */
 const STRUCTURAL = new Set([
@@ -301,8 +293,6 @@ function stackOf(fields: Record<string, unknown>): string | null {
   return null;
 }
 
-// --------------------------------------------------------------------- http
-
 export interface HttpFields {
   method?: string;
   url?: string;
@@ -342,8 +332,6 @@ function renderHttp(http: HttpFields): string {
       : "";
   return `${methodCell}${urlCell}${statusCell}${msCell}`;
 }
-
-// -------------------------------------------------------------------- entry
 
 export interface ConsoleEntry {
   time?: number | string;
@@ -412,8 +400,6 @@ export function formatEntry(entry: ConsoleEntry): string {
   }
   return line;
 }
-
-// ------------------------------------------------------------------- banner
 
 export interface BannerRow {
   label: string;

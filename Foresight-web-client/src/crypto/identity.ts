@@ -1,10 +1,7 @@
 /**
  * Main-thread API over the KDF worker (vault.worker.ts) + the E2EE startup
- * self-test.
- *
- * Holds nothing itself — it produces an in-memory {publicKey, privateKey}
- * Identity that the E2EE context owns and wipes. The worker is created lazily on
- * first use (so nothing spins up a worker or loads WASM just by importing this).
+ * self-test. Holds no state; the E2EE context owns and wipes the Identity. The
+ * worker is created lazily on first use.
  */
 import {
   E2EE_ENCRYPTION_TYPE,
@@ -32,8 +29,6 @@ export interface Identity {
   /** base64 of the public key (as stored in the vault / sent to the server). */
   publicKeyB64: string;
 }
-
-/* ------------------------------------------------------------- worker plumbing */
 
 let worker: Worker | null = null;
 let seq = 0;
@@ -83,8 +78,6 @@ async function toIdentity(publicKeyB64: string, privateKeyB64: string): Promise<
   };
 }
 
-/* ------------------------------------------------------------- public API */
-
 /** Register / first-login: generate a keypair + wrap it under `password` (in-worker). */
 export async function createVault(password: string): Promise<{ vault: EncryptedKeyVault; identity: Identity }> {
   await ensureSelfTest();
@@ -115,8 +108,6 @@ export async function rewrapVault(
   if (!res.vault) throw new Error("Vault re-wrap returned no vault");
   return res.vault;
 }
-
-/* ------------------------------------------------------------- startup self-test */
 
 let selfTestPromise: Promise<void> | null = null;
 

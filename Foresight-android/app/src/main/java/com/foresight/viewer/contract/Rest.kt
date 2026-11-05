@@ -22,8 +22,6 @@ val ForesightJson: Json = Json {
     encodeDefaults = true      // data messages must carry their v/type defaults
 }
 
-// MARK: - Enums
-
 @Serializable
 enum class MemberRole {
     @SerialName("owner") OWNER,
@@ -62,8 +60,6 @@ enum class ThermalState {
     @SerialName("critical") CRITICAL,
 }
 
-// MARK: - Shared value types
-
 @Serializable
 data class WifiInfo(
     /** Signal strength bucketed to 0–4 bars. */
@@ -85,8 +81,6 @@ data class CameraCapabilities(
     @Serializable
     data class Resolution(val width: Int, val height: Int)
 }
-
-// MARK: - Auth
 
 @Serializable
 data class RegisterRequest(
@@ -127,8 +121,6 @@ data class AuthResponse(
 @Serializable
 data class UpdateProfileRequest(val firstName: String?)
 
-// MARK: - Homes
-
 @Serializable
 data class CreateHomeRequest(val name: String)
 
@@ -165,8 +157,6 @@ data class HomeMemberDTO(
     val publicKey: String? = null,
 )
 
-// MARK: - Cameras
-
 @Serializable
 data class CameraStatus(
     val battery: Double? = null,
@@ -189,8 +179,6 @@ data class CameraDTO(
 
 @Serializable
 data class RenameCameraRequest(val name: String)
-
-// MARK: - Pairing
 
 /**
  * Payload encoded into the QR code shown when adding a camera. The camera
@@ -227,8 +215,6 @@ data class ClaimPairingResponse(
      */
     val homeKeyPending: Boolean? = null,
 )
-
-// MARK: - Realtime (LiveKit) token
 
 @Serializable
 data class RtTokenRequest(

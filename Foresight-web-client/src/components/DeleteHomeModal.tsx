@@ -1,10 +1,7 @@
 /**
- * Confirm + perform permanent deletion of a Home. This is an owner-only,
- * irreversible action (it also removes every camera and recording in the Home),
- * so the trigger is gated on role in HomePage and the user must type the Home's
- * name to enable the delete button. Mirrors the AddMemberModal pattern: busy/
- * error handling around the shared <Modal>, dismissing via the render-prop
- * `close` so the fade-out animates.
+ * Owner-only, irreversible Home deletion (also removes every camera and
+ * recording). The user must type the Home's name to arm the delete button.
+ * Dismisses via the render-prop `close` so the fade-out animates.
  */
 import { useState, type FormEvent } from "react";
 

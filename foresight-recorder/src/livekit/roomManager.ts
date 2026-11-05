@@ -384,7 +384,6 @@ class RoomSession {
         // sending, and so the geometry we encode every segment at.
         rec.onVideoTrack(track, publishedGeometry(pub as RemoteTrackPublication));
       }
-      // Audio is captured only when enabled (v1: off). M4 wires the audio pump.
     });
 
     room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant) => {
@@ -393,7 +392,6 @@ class RoomSession {
       if (rec && track.kind === TrackKind.KIND_VIDEO) rec.onTrackGone();
     });
 
-    // A camera (re)published a track — subscribe if it is armed.
     room.on(RoomEvent.TrackPublished, (pub: RemoteTrackPublication, participant) => {
       const cameraId = cameraIdOf(participant);
       if (cameraId && this.recorders.has(cameraId)) this.subscribePublication(pub);

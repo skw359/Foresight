@@ -27,7 +27,6 @@ export function HomePage() {
   const { cameras: dtos, loading, error, refresh } = useCameras(homeId ?? null);
   const room = useHomeRoom(homeId ?? null, dtos, true);
 
-  // Drive the top loading bar while the camera registry loads on navigation.
   useNavProgressWhileLoading(loading);
 
   // No GET /homes/:id exists, so resolve this Home (its name + the viewer's

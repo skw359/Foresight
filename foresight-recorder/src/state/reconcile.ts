@@ -49,7 +49,6 @@ export async function reconcileOnce(rm: RoomManager, keyManager: KeyManager): Pr
   // 1. Ingest key state FIRST so arm() below sees the right connect decision.
   const changes = keyManager.ingest(body.homeKeys ?? []);
 
-  // 2. Arm/disarm diff (arm() is now key-aware via the KeyManager).
   const desired = body.cameras ?? [];
   const desiredKeys = new Set(desired.map((c) => `${c.homeId}/${c.cameraId}`));
   const armed = rm.armedKeys();

@@ -143,7 +143,6 @@ fun FullScreenCameraScreen(
     var recorder by remember { mutableStateOf<TrackRecorder?>(null) }
     var isRecording by remember { mutableStateOf(false) }
 
-    // Rename / remove.
     var showRename by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var showRemoveConfirm by remember { mutableStateOf(false) }
@@ -358,7 +357,6 @@ fun FullScreenCameraScreen(
 
         if (showControls) {
             Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
-                // Top bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -411,7 +409,6 @@ fun FullScreenCameraScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
 
-                // Control bar
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()

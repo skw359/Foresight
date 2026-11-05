@@ -1,10 +1,3 @@
-/**
- * React theme state, backed by the localStorage helpers in api/theme. Keeps the
- * UI reactive to light/dark changes and syncs the choice onto <html data-theme>
- * so the global CSS tokens in styles.css repaint the whole app at once.
- *
- * Modeled on AuthContext so it slots into the same provider stack in main.tsx.
- */
 import {
   createContext,
   useCallback,
@@ -29,9 +22,7 @@ const ThemeCtx = createContext<ThemeState | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => getStoredTheme());
 
-  // Reflect every change onto <html> and persist it. Runs on mount too, so the
-  // attribute is correct even though the boot script in index.html sets it
-  // first (the two always agree, so there is no flicker).
+  // Runs on mount too; agrees with the boot script in index.html, so no flicker.
   useEffect(() => {
     applyTheme(theme);
     setStoredTheme(theme);

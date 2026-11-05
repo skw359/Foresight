@@ -14,8 +14,7 @@
  * id via GCM additional data, so a cached identity can never be restored into a
  * different account's session.
  *
- * Honest threat framing (posture change from the plan's §7.2 memory-only note,
- * decided 2026-07-04): persisted this way, the identity is recoverable by any
+ * Threat model: persisted this way, the identity is recoverable by any
  * code running in this origin while a session exists — the same exposure class
  * as the JWT itself. What the non-extractable wrap prevents is offline reading
  * of the key material out of copied IndexedDB files without also exercising
@@ -42,8 +41,6 @@ interface IdentityRow {
   /** AES-GCM(pk32 ‖ sk32), additionalData = utf8(userId). */
   cipher: ArrayBuffer;
 }
-
-/* ------------------------------------------------------------- IDB plumbing */
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -77,8 +74,6 @@ async function withStore<T>(
   }
 }
 
-/* ------------------------------------------------------------- helpers */
-
 function bytesToB64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -95,8 +90,6 @@ async function getOrCreateWrapKey(store: IDBObjectStore): Promise<CryptoKey> {
   await idbRequest(store.put(key, WRAP_KEY_ROW));
   return key;
 }
-
-/* ------------------------------------------------------------- public API */
 
 const PREF_KEY = "foresight.keepUnlocked";
 

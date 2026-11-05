@@ -2,10 +2,8 @@
 //  AlarmPlayer.swift
 //  Foresight Camera Client
 //
-//  Optional emergency-alarm sound for the `alarm` command. The contract treats
-//  the alarm UI as deferred, so this is a minimal best-effort: it loops a loud
-//  system alert tone over the loudspeaker until stopped. No bundled asset is
-//  required (uses a built-in system sound id), keeping the app lightweight.
+//  Best-effort emergency-alarm sound for the `alarm` command: loops a built-in
+//  system alert tone until stopped; no bundled asset.
 //
 
 import AudioToolbox
@@ -19,7 +17,7 @@ final class AlarmPlayer {
     private var isPlaying = false
     private var timer: Timer?
 
-    // 1005 is a built-in alert tone; loud and attention-grabbing.
+    // 1005 is a built-in alert tone.
     private let systemSoundID: SystemSoundID = 1005
 
     func play() {

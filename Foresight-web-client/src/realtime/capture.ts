@@ -1,9 +1,5 @@
-/**
- * Viewer-side snapshot + recording (per PROTOCOL.md §4: snapshot/record are
- * viewer-side in v1). Operates on the live <video> element / its MediaStream.
- */
+// Snapshot/record are viewer-side in v1 (PROTOCOL.md §4).
 
-/** Capture the current video frame to a PNG and trigger a download. */
 export function snapshotToPng(video: HTMLVideoElement, baseName: string): void {
   const w = video.videoWidth;
   const h = video.videoHeight;
@@ -22,10 +18,7 @@ export function snapshotToPng(video: HTMLVideoElement, baseName: string): void {
   }, "image/png");
 }
 
-/**
- * Records the media playing in a <video> element to a .webm file. Pulls a
- * MediaStream from the element (captureStream) so it follows the live track.
- */
+/** Records a <video> element to .webm via captureStream, so it follows the live track. */
 export class VideoRecorder {
   private recorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
@@ -62,7 +55,7 @@ export class VideoRecorder {
       }
       this.chunks = [];
     };
-    rec.start(1000); // gather data each second
+    rec.start(1000);
     this.recorder = rec;
   }
 
@@ -73,8 +66,6 @@ export class VideoRecorder {
     this.recorder = null;
   }
 }
-
-/* ---------------------------------------------------------------- helpers */
 
 interface CaptureableVideo extends HTMLVideoElement {
   captureStream?: () => MediaStream;

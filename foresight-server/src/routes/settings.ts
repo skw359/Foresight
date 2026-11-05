@@ -9,10 +9,8 @@
  * self-registered user could point every newly paired camera — in every Home —
  * at their own server and harvest its credentials and video.
  *
- * The pairing server URL is the base address embedded into QR pairing tickets.
- * It must be reachable by the phones being paired — "localhost" only works on
- * this machine — which is why it is overridable from the dashboard. Leaving it
- * blank falls back to auto-detecting the address the dashboard used to reach us.
+ * The pairing server URL is the base address embedded into QR pairing tickets;
+ * leaving it blank falls back to auto-detecting the address the dashboard used.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";

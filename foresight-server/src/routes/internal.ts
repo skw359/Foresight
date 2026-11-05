@@ -45,12 +45,9 @@ export async function internalRoutes(app: FastifyInstance): Promise<void> {
   app.get("/internal/recording-cameras", async (req, reply) => {
     if (!recorderAuthed(req, reply)) return reply;
 
-    // Return every camera opted into 24/7 recording, regardless of the DB
-    // `online` flag. The recorder is itself a LiveKit subscriber: it joins the
-    // room and waits in AWAITING_TRACK until the camera publishes, so it doesn't
-    // need (and shouldn't depend on) the webhook-maintained online flag to know
-    // what to record. This keeps recording working even if an online/offline
-    // webhook is ever missed.
+    // Every camera opted into 24/7 recording, regardless of the DB `online`
+    // flag: the recorder joins the room and waits in AWAITING_TRACK until the
+    // camera publishes, so recording survives a missed online/offline webhook.
     const cams = await prisma.camera.findMany({
       where: { recordingEnabled: true },
       select: { id: true, homeId: true },

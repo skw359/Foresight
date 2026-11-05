@@ -20,7 +20,6 @@
 
 /** Prefix every HLS segment filename carries (see ffmpeg `-hls_segment_filename`). */
 export const SEGMENT_PREFIX = "seg_";
-/** Extension for MPEG-TS HLS segments. */
 export const SEGMENT_EXT = ".ts";
 /** Nominal segment length in seconds (ffmpeg `-hls_time`). Used as a fallback. */
 export const DEFAULT_SEGMENT_SECONDS = 6;
@@ -271,9 +270,6 @@ export function coverageSpans(
   return spans;
 }
 
-// ---------------------------------------------------------------------------
-// Consolidated day files
-//
 // Old UTC days are consolidated by the recorder into ONE MPEG-TS file per
 // camera per day — a raw byte concatenation of that day's seg_*.ts in epoch
 // order — plus a small JSON index mapping each original segment to its byte
@@ -288,7 +284,6 @@ export function coverageSpans(
 // without an index is a crash leftover to be rebuilt); once it exists, loose
 // segments listed in it are deletable leftovers, and readers seeing a segment
 // both loose and indexed must prefer the index entry.
-// ---------------------------------------------------------------------------
 
 /** Prefix of consolidated day files + their indexes (`day_<YYYYMMDD>`). */
 export const DAY_PREFIX = "day_";

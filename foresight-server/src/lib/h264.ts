@@ -2,13 +2,9 @@
  * Just enough MPEG-TS + H.264 to answer one question about a recorded segment:
  * what resolution is it?
  *
- * The clip route needs this because an MP4 track declares ONE resolution. A
- * `-c copy` remux of a range whose segments differ therefore inherits the FIRST
- * piece's size — a 320x180 download of footage that ran at 960x540 a few seconds
- * later. The recorder now encodes every segment for a camera at one geometry, so
- * new footage is uniform, but footage recorded before that (and any range
- * straddling the change) is not, and must be re-encoded onto one geometry
- * instead of silently mislabelled.
+ * The clip route needs this because an MP4 track declares ONE resolution, so a
+ * `-c copy` remux of mixed-size segments inherits the FIRST piece's size (see
+ * clipGeometry.ts).
  *
  * Reading it here rather than shelling out keeps the check to one small file read
  * per piece — no ffprobe dependency, no process per segment on a 600-piece range.

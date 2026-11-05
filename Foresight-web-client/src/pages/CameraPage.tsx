@@ -38,7 +38,6 @@ export function CameraPage() {
   const room = useHomeRoom(homeId ?? null, dtos, true);
   const [home, setHome] = useState<HomeDTO | null>(null);
 
-  // Drive the top loading bar while this Home's camera registry loads.
   useNavProgressWhileLoading(loading);
 
   // Resolve the Home for the recording gate (keyEpoch + recorderConsented).

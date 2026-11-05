@@ -89,7 +89,6 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
     return { token: signSession(updated) };
   });
 
-  // Update the caller's own profile (currently just the display first name).
   app.patch("/me", { preHandler: requireUser }, async (req): Promise<UserDTO> => {
     const { firstName } = parseBody(profileUpdate, req.body);
     const user = await prisma.user.update({

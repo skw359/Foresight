@@ -2,23 +2,19 @@
 //  RealtimeSession.swift
 //  Foresight Camera Client
 //
-//  The realtime brain. Owns the LiveKit Room and:
-//    - connects with the publisher token from /rt/token
-//    - publishes the camera (simulcast) + mic tracks
-//    - decodes inbound `command` data messages (ForesightCodec) and applies them
-//      to the CameraController, acking every command
-//    - broadcasts `state` on every change and `telemetry` every ~5s
-//    - on talkStart/talkStop, routes the viewer's audio to the loudspeaker and
-//      flips the "Viewer is speaking" indicator
-//    - tracks viewerCount from remote participants whose metadata role is viewer
-//    - SUPERVISES the connection (REL-01): once streaming is wanted, a failed
-//      start, an exhausted SDK reconnect, or a server/LiveKit restart is retried
-//      with capped exponential backoff (1 s → 60 s, jittered), and a network
-//      change or app activation retries immediately. Only an explicit stop()
-//      ends it. The intent is persisted, so a relaunch resumes streaming.
-//    - steps capture quality down while the phone is hot (REL-02)
+//  The realtime brain. Owns the LiveKit Room: connects with the /rt/token
+//  publisher token, publishes camera + mic, applies and acks inbound `command`
+//  messages, broadcasts `state` on every change and `telemetry` every ~5s,
+//  routes viewer PTT audio to the loudspeaker, and tracks viewerCount.
 //
-//  All published @Published properties drive the camera-mode UI.
+//  It SUPERVISES the connection: once streaming is wanted, a failed start, an
+//  exhausted SDK reconnect, or a server/LiveKit restart is retried with capped
+//  exponential backoff (1 s → 60 s, jittered), and a network change or app
+//  activation retries immediately. Only an explicit stop() ends it. The intent
+//  is persisted, so a relaunch resumes streaming. It also steps capture quality
+//  down while the phone is hot.
+//
+//  The @Published properties drive the camera-mode UI.
 //
 
 import Combine
@@ -26,7 +22,6 @@ import Foundation
 import LiveKit
 import Network
 
-/// High-level connection status surfaced to the UI.
 enum StreamStatus: Equatable {
     case idle
     case connecting
@@ -44,16 +39,15 @@ enum StreamStatus: Equatable {
         }
     }
 
-    /// Extra context shown beneath the status label — currently the `.offline`
-    /// reason (e.g. "Waiting for key…"). nil when there is nothing to add.
+    /// The `.offline` reason (e.g. "Waiting for key…"), nil otherwise.
     var detail: String? {
         if case .offline(let reason) = self { return reason }
         return nil
     }
 }
 
-/// Result of applying a quality preset, so the command handler can ack
-/// precisely — in particular to surface the Pure 4K → Max fallback to viewers.
+/// Lets the command handler ack precisely, in particular surfacing the 4K
+/// fallback to viewers.
 private enum QualityChangeOutcome { case ok, failed, fellBackFrom4K }
 
 @MainActor
@@ -71,8 +65,7 @@ final class RealtimeSession: NSObject, ObservableObject {
     @Published private(set) var quality: QualityPreset = .auto
     @Published private(set) var recording: Bool = false
 
-    /// The local camera video track, exposed so the UI can render a live preview
-    /// that matches exactly what is published.
+    /// Exposed so the UI renders a preview that matches exactly what is published.
     @Published private(set) var previewTrack: LocalVideoTrack?
 
     // MARK: Dependencies / config
@@ -86,19 +79,18 @@ final class RealtimeSession: NSObject, ObservableObject {
 
     /// The LiveKit shared-key provider while this Home is E2EE-activated (nil for
     /// a plaintext, non-activated Home). Held so rotation can re-apply the key
-    /// live (`setKey`) without republishing. See §3.2 for the locked contract.
+    /// live (`setKey`) without republishing.
     private var keyProvider: BaseKeyProvider?
 
-    // MARK: Supervisor (REL-01)
+    // MARK: Supervisor
 
-    /// UserDefaults key persisting whether the user wants this camera live.
     static let wantsStreamingKey = "foresight.camera.wantsStreaming"
 
     /// Whether streaming is WANTED (persisted). The supervisor keeps retrying
     /// while this is true; only an explicit `stop()` clears it.
     @Published private(set) var wantsStreaming: Bool
 
-    /// When the next automatic retry fires (nil when none is scheduled) — shown in the UI.
+    /// nil when no retry is scheduled.
     @Published private(set) var nextRetryAt: Date?
 
     /// The pending retry (backoff, or the 5 s awaiting-key poll).
@@ -113,23 +105,21 @@ final class RealtimeSession: NSObject, ObservableObject {
     private var epochCheckTask: Task<Void, Never>?
     private static let epochCheckInterval: UInt64 = 5 * 60 * 1_000_000_000
 
-    // MARK: Thermal policy (REL-02)
+    // MARK: Thermal policy
 
     /// The quality the user/viewers chose, restored once the phone cools down.
     private var qualityBeforeThermalStep: QualityPreset?
     private var thermalObserver: NSObjectProtocol?
 
-    /// The current video publication, kept so we can unpublish on a publish-mode
-    /// change (entering/leaving Pure 4K).
+    /// Kept so we can unpublish on a publish-mode change (entering/leaving 4K).
     private var videoPublication: LocalTrackPublication?
 
-    /// Whether the *currently published* track is the Pure 4K single (non-simulcast)
+    /// Whether the *currently published* track is the 4K single (non-simulcast)
     /// layer. We only unpublish/republish when this is about to change — switching
     /// among the simulcast presets (auto/480/1080/Max) keeps the same publication
     /// and just reconfigures the live capturer, so viewers never lose their feed.
     private var isPublishingSingleLayer = false
 
-    /// Remote viewer audio tracks we've subscribed to for PTT, keyed by SID.
     private var subscribedViewerAudio: Set<Track.Sid> = []
 
     /// Identities of viewers currently in push-to-talk with THIS camera. A
@@ -174,7 +164,7 @@ final class RealtimeSession: NSObject, ObservableObject {
         }
     }
 
-    /// Release the network monitor + observers (the session is being discarded, e.g. unpair).
+    /// Release the network monitor + observers (the session is being discarded).
     func invalidate() {
         pathMonitor.cancel()
         if let thermalObserver { NotificationCenter.default.removeObserver(thermalObserver) }
@@ -238,7 +228,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         return base * Double.random(in: 0.8...1.2)
     }
 
-    /// Schedule the next connect attempt while streaming is wanted.
     private func scheduleRetry(reason: String?, fixedDelay: TimeInterval? = nil) {
         guard wantsStreaming else { return }
         retryTask?.cancel()
@@ -257,8 +246,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         }
     }
 
-    /// Mint a token, connect, and start publishing. On failure the supervisor
-    /// schedules another attempt.
     private func connect() async {
         guard wantsStreaming else { return }
         guard status != .streaming, status != .connecting else { return }
@@ -268,9 +255,9 @@ final class RealtimeSession: NSObject, ObservableObject {
         do {
             let rt = try await backend.realtimeToken(homeId: paired.homeId, deviceSecret: paired.deviceSecret)
 
-            // E2EE gate (plan §6 pair-camera / §10.3 awaiting-key). keyEpoch is the
-            // discriminator; sealedHomeKey/keyEpoch/SealedKey.epoch are server
-            // bookkeeping and NEVER a LiveKit key index (that stays 0 — §3.2).
+            // E2EE gate. keyEpoch is the discriminator; sealedHomeKey/keyEpoch/
+            // SealedKey.epoch are server bookkeeping and NEVER a LiveKit key
+            // index (that stays 0).
             let epoch = rt.keyEpoch ?? 0
             if epoch >= 1 {
                 guard let sealed = rt.sealedHomeKey else {
@@ -287,14 +274,12 @@ final class RealtimeSession: NSObject, ObservableObject {
                 provider.setKey(key: hmk.base64EncodedString(), index: Int32(ForesightE2EE.keyIndex))
                 keyProvider = provider
             } else {
-                // Home not activated → plaintext exactly as before.
+                // Home not activated → plaintext.
                 keyProvider = nil
             }
 
-            // Media-only E2EE options built through `mediaOnlyE2EE` (see the
-            // configurator at the bottom of this file for why `E2EEOptions` is
-            // deliberate). E2EE is off for a non-activated Home (nil provider),
-            // so this is byte-for-byte the old behavior there.
+            // See the configurator at the bottom of this file for why `E2EEOptions`
+            // is deliberate. E2EE is off for a non-activated Home (nil provider).
             let roomOptions = mediaOnlyE2EE.roomOptions(
                 defaultVideoPublishOptions: camera.publishOptions(for: quality),
                 keyProvider: keyProvider
@@ -357,7 +342,7 @@ final class RealtimeSession: NSObject, ObservableObject {
         await connect()
     }
 
-    // MARK: E2EE (plan §3.2 locked contract)
+    // MARK: E2EE (locked contract)
 
     /// Build the shared-key provider with EXPLICIT options sourced from the locked
     /// contract constants — never trusting SDK defaults. This is the explicit form
@@ -387,7 +372,7 @@ final class RealtimeSession: NSObject, ObservableObject {
     ///    otherwise a connected camera keeps streaming plaintext for days);
     ///  - encrypted session, Home turned off → reconnect plaintext;
     ///  - encrypted session, key rotated → re-apply the new key live at index 0
-    ///    (no republish). `epoch` is server bookkeeping, never a key index (§3.2).
+    ///    (no republish). `epoch` is server bookkeeping, never a key index.
     private func reconcileKeyState() async {
         guard status == .streaming else { return }
         let provider = keyProvider
@@ -440,7 +425,7 @@ final class RealtimeSession: NSObject, ObservableObject {
         epochCheckTask = nil
     }
 
-    // MARK: Thermal policy (REL-02)
+    // MARK: Thermal policy
 
     /// Step the encode down while the phone is hot and restore it once it cools:
     /// `.serious` caps at 1080p (drops 4K/Max), `.critical` drops to 480p. A
@@ -477,7 +462,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         videoPublication = try await local.publish(videoTrack: tracks.video, options: camera.publishOptions(for: quality))
         _ = try await local.publish(audioTrack: tracks.audio)
 
-        // Reflect the controller's defaults.
         torchOn = camera.torchOn
         lens = camera.activeLens
         zoom = camera.activeZoom
@@ -485,7 +469,6 @@ final class RealtimeSession: NSObject, ObservableObject {
 
     // MARK: Command handling
 
-    /// Decode + apply a single inbound command, then ack.
     private func handle(command: CommandMessage, from sender: Participant?) async {
         // Authorization: only obey commands targeted at us from a VIEWER peer.
         // Sender-less data (which only the server API can produce) and other
@@ -538,25 +521,23 @@ final class RealtimeSession: NSObject, ObservableObject {
             setViewer(sender, speaking: false)
 
         case .startRecord:
-            // Recording is viewer-side in v1: just track + ack.
+            // Recording is viewer-side: just track + ack.
             recording = true
 
         case .stopRecord:
             recording = false
 
         case .snapshotHint:
-            // Advisory only; nothing to do on-device in v1.
+            // Advisory only; nothing to do on-device.
             break
 
         case .alarm:
-            // Stubbed: optionally play a sound. UI deferred per contract.
             let on = command.args?.on ?? true
             if on { AlarmPlayer.shared.play() } else { AlarmPlayer.shared.stop() }
         }
 
         await sendAck(commandId: command.id, ok: ok, error: ackError)
 
-        // Any state-affecting command rebroadcasts state.
         switch command.action {
         case .snapshotHint: break
         default: broadcastState()
@@ -566,11 +547,10 @@ final class RealtimeSession: NSObject, ObservableObject {
     private func applyQuality(_ q: QualityPreset) async -> QualityChangeOutcome {
         if camera.publishesSingleLayer(for: q) {
             // "Max" on a 4K-capable device is a single non-simulcast 4K layer, so
-            // it genuinely needs a republish (the publish *structure* changes).
-            // Try true 4K; if the capture reconfigure or the publish fails, fall
-            // back to the reliable 1080p simulcast so the viewer always gets
-            // video back — and report the fallback so the UI can toast + show
-            // the preset it actually landed on.
+            // it needs a republish (the publish *structure* changes). If the
+            // capture reconfigure or the publish fails, fall back to the reliable
+            // 1080p simulcast so the viewer always gets video back, and report
+            // the fallback so the UI can show the preset it landed on.
             quality = q
             if await camera.applyQuality(q) {
                 do {
@@ -591,19 +571,16 @@ final class RealtimeSession: NSObject, ObservableObject {
         }
 
         // Switching among the simulcast presets (auto/480/1080, and Max on a
-        // camera with no 4K sensor). Re-dimension the LIVE capturer — the same
-        // safe operation as a lens switch — and DO NOT
-        // unpublish/republish: the published simulcast ladder stays up, viewers
-        // pin their own layer, and dynacast pauses unused layers. Unpublishing
-        // here is exactly what dropped every viewer to "Connecting feed…": a
-        // re-published, already-unpublished track instance does not reliably
-        // re-propagate to subscribers, leaving the camera with no video at all.
+        // camera with no 4K sensor): re-dimension the LIVE capturer and DO NOT
+        // unpublish/republish. The simulcast ladder stays up, viewers pin their
+        // own layer, and dynacast pauses unused layers. Unpublishing here dropped
+        // every viewer to "Connecting feed…": a re-published, already-unpublished
+        // track instance does not reliably re-propagate to subscribers.
         quality = q
         let captureOK = await camera.applyQuality(q)
 
-        // The one exception: if we're leaving single-layer 4K back to a simulcast
-        // preset, the publish structure must change, so republish once with a
-        // fresh track.
+        // Exception: leaving single-layer 4K back to a simulcast preset changes
+        // the publish structure, so republish once with a fresh track.
         if isPublishingSingleLayer {
             do {
                 try await republishVideo(for: q)
@@ -617,15 +594,12 @@ final class RealtimeSession: NSObject, ObservableObject {
         return captureOK ? .ok : .failed
     }
 
-    /// Unpublish the current video track and publish a FRESH one with the given
-    /// preset's publish options. Used ONLY when crossing the single-layer 4K
-    /// boundary (simulcast ↔ single layer), where the publish structure must change.
+    /// Unpublish the current video track and publish a FRESH one. Used ONLY when
+    /// crossing the single-layer 4K boundary (simulcast ↔ single layer).
     ///
-    /// A fresh track is built (rather than re-publishing the unpublished
-    /// instance) because re-publishing an already-unpublished `LocalVideoTrack`
-    /// does not reliably re-propagate to subscribers — the defect that froze
-    /// viewers on every quality change. Throws if the publish fails so callers
-    /// can recover (e.g. the 4K → 1080p fallback).
+    /// A fresh track is built because re-publishing an already-unpublished
+    /// `LocalVideoTrack` does not reliably re-propagate to subscribers. Throws if
+    /// the publish fails so callers can recover (e.g. the 4K → 1080p fallback).
     private func republishVideo(for preset: QualityPreset) async throws {
         let local = room.localParticipant
         if let publication = videoPublication {
@@ -635,7 +609,7 @@ final class RealtimeSession: NSObject, ObservableObject {
         let fresh = await camera.rebuildVideoTrack(quality: preset)
         previewTrack = fresh
         videoPublication = try await local.publish(videoTrack: fresh, options: camera.publishOptions(for: preset))
-        // Re-apply device-tied controls to the new capture device.
+        // Device-tied controls must be re-applied to the new capture device.
         _ = camera.setZoom(zoom)
         if torchOn { _ = camera.setTorch(on: torchOn) }
     }
@@ -644,17 +618,14 @@ final class RealtimeSession: NSObject, ObservableObject {
     //
     // All cameras in a Home share ONE room, so the SFU makes a viewer's mic
     // available to EVERY camera. Targeting is therefore enforced here, on the
-    // camera — not by the SFU: we manually subscribe a viewer's audio ONLY while
-    // that viewer is in push-to-talk with *this* camera. `talkingViewerIdentities`
-    // holds the viewer identities currently talking to us (talkStart adds,
-    // talkStop/disconnect removes); `viewerSpeaking` (UI + `state.talking`) is
-    // simply "is that set non-empty". Viewers publish their mic on the first
-    // press and only MUTE it on release, so the track usually outlives the talk
-    // — the gate, not the viewer, is what keeps it silent here. We (re)gate
-    // when a command arrives, when we (re)connect, and whenever a remote track
-    // is published or subscribed.
+    // camera: we manually subscribe a viewer's audio ONLY while that viewer is in
+    // push-to-talk with *this* camera. `viewerSpeaking` (UI + `state.talking`) is
+    // "is `talkingViewerIdentities` non-empty". Viewers publish their mic on the
+    // first press and only MUTE it on release, so the track usually outlives the
+    // talk; the gate is what keeps it silent here. We (re)gate when a command
+    // arrives, when we (re)connect, and whenever a remote track is published or
+    // subscribed.
 
-    /// Mark a viewer as talking (or not) to this camera, then re-apply the gate.
     /// `sender` must be the viewer peer that sent the talkStart/talkStop — we
     /// scope the audio subscription to exactly that viewer.
     private func setViewer(_ sender: Participant?, speaking: Bool) {
@@ -662,8 +633,7 @@ final class RealtimeSession: NSObject, ObservableObject {
               let identity = sender.identity?.stringValue else { return }
         if speaking {
             talkingViewerIdentities.insert(identity)
-            // Keep playback routed to the loudspeaker so the viewer is heard in
-            // the room. The actual start/stop gating is done per-track below.
+            // Keep playback routed to the loudspeaker so the viewer is heard in the room.
             AudioManager.shared.isSpeakerOutputPreferred = true
         } else {
             talkingViewerIdentities.remove(identity)
@@ -672,7 +642,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         scheduleAudioGate()
     }
 
-    /// True if this participant is a viewer currently in push-to-talk with us.
     private func isTalkingViewer(_ participant: Participant) -> Bool {
         guard let identity = participant.identity?.stringValue else { return false }
         return talkingViewerIdentities.contains(identity)
@@ -742,7 +711,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         await publish(.ack(ack), reliable: true, to: [])
     }
 
-    /// Broadcast the full camera state to the room (on every change).
     func broadcastState() {
         let state = StateMessage(
             cameraId: paired.cameraId,
@@ -770,7 +738,6 @@ final class RealtimeSession: NSObject, ObservableObject {
         Task { await publish(.telemetry(msg), reliable: true, to: []) }
     }
 
-    /// Encode with ForesightCodec and publish over the reliable data channel.
     private func publish(_ message: DataMessage, reliable: Bool, to identities: [String]) async {
         guard let data = ForesightCodec.encode(message) else { return }
         let options = DataPublishOptions(
@@ -808,7 +775,7 @@ final class RealtimeSession: NSObject, ObservableObject {
               let data = metadata.data(using: .utf8),
               let parsed = try? JSONDecoder().decode(ParticipantMetadata.self, from: data)
         else {
-            // Fall back to identity prefix parsing if metadata is absent.
+            // Metadata absent: fall back to identity prefix parsing.
             if let id = participant.identity?.stringValue {
                 return Foresight.parseIdentity(id)?.role == .viewer
             }
@@ -868,7 +835,7 @@ extension RealtimeSession: RoomDelegate {
             self.talkingViewerIdentities.removeAll()
             self.viewerSpeaking = false
             self.scheduleAudioGate()
-            // Re-publish current state so viewers resync after a blip.
+            // Viewers resync after a blip.
             self.broadcastState()
             self.recomputeViewerCount()
         }
@@ -932,11 +899,10 @@ extension RealtimeSession: RoomDelegate {
 
     nonisolated func room(_ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String, encryptionType: EncryptionType) {
         Task { @MainActor in
-            // The camera consumes only `command` (applied to the controller) and
-            // `rekey` (live key rotation). ack/state/telemetry are outbound-only
-            // for a camera and are ignored, exactly as before.
-            // Decode validates shape + protocol version; the sender rule is
-            // shared with every other client (Foresight.isAuthorizedSender).
+            // A camera consumes only `command` and `rekey`; ack/state/telemetry
+            // are outbound-only for it. Decode validates shape + protocol
+            // version; the sender rule is shared with every other client
+            // (Foresight.isAuthorizedSender).
             guard let message = ForesightCodec.decode(data),
                   Foresight.isAuthorizedSender(message, senderIdentity: participant?.identity?.stringValue)
             else { return }
@@ -954,10 +920,10 @@ extension RealtimeSession: RoomDelegate {
 
 // MARK: - Media-only E2EE room options
 //
-// v1 is media-only E2EE on purpose: LiveKit's replacement `EncryptionOptions`
-// also encrypts the data channel, which would break commands/state/rekey
-// against the viewer/web/recorder until all four clients migrate together
-// (deferred to v2 — same reasoning as the viewer app's RoomManager).
+// Media-only E2EE on purpose: LiveKit's replacement `EncryptionOptions` also
+// encrypts the data channel, which would break commands/state/rekey against the
+// viewer/web/recorder until all four clients migrate together (deferred to v2 —
+// same reasoning as the viewer app's RoomManager).
 // `E2EEOptions` is therefore used deliberately. The protocol indirection
 // silences just that deprecation warning: a deprecated witness called through
 // a non-deprecated protocol requirement does not re-emit it.
@@ -985,5 +951,5 @@ private struct MediaOnlyE2EEConfigurator: MediaOnlyE2EEConfiguring {
     }
 }
 
-/// Warning-free entry point: dispatch through the protocol, not the struct.
+/// Dispatch through the protocol, not the struct, to avoid the deprecation warning.
 private let mediaOnlyE2EE: any MediaOnlyE2EEConfiguring = MediaOnlyE2EEConfigurator()

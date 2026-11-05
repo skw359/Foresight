@@ -123,7 +123,6 @@ struct TilePressStyle: ButtonStyle {
     }
 }
 
-/// Placeholder tile while the camera list loads.
 struct TileSkeleton: View {
     var style: CameraTile.Style = .large
 

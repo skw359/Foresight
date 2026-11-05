@@ -52,7 +52,6 @@ actor IdentityVault {
     private var publicKey: [UInt8]?
     private var privateKey: [UInt8]?
 
-    /// True once an identity is unlocked/loaded and available for unsealing.
     var isUnlocked: Bool { privateKey != nil }
 
     // MARK: - Unlock an existing vault
@@ -148,7 +147,6 @@ actor IdentityVault {
         return Data(publicKey) + Data(privateKey)
     }
 
-    /// Zero the retained keypair (sign-out / session expiry).
     func wipe() {
         // Best-effort scrub of the private key's backing store before dropping it.
         privateKey?.withUnsafeMutableBytes { raw in

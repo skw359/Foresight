@@ -68,8 +68,6 @@ class IdentityVault(private val sodium: SodiumOps) {
     /** True once an identity is unlocked/loaded and available for unsealing. */
     suspend fun isUnlocked(): Boolean = mutex.withLock { privateKey != null }
 
-    // MARK: - Unlock an existing vault
-
     /**
      * Derive the Argon2id vault key from [password] + the blob's KdfParams, then
      * crypto_secretbox_open the wrapped private key. Retains the keypair and
@@ -95,8 +93,6 @@ class IdentityVault(private val sodium: SodiumOps) {
             }
             sk.copyOf()
         }
-
-    // MARK: - First-login migration (create a fresh vault)
 
     /**
      * Generate a new X25519 keypair, a fresh 16-byte salt, derive the vault key
@@ -132,8 +128,6 @@ class IdentityVault(private val sodium: SodiumOps) {
             vault to sk.copyOf()
         }
 
-    // MARK: - Unseal a Home Media Key
-
     /**
      * crypto_box_seal_open a sealed HMK against an explicit recipient keypair.
      * Stateless — used by the parity test and internally. Returns the 32-byte HMK.
@@ -164,8 +158,6 @@ class IdentityVault(private val sodium: SodiumOps) {
         }
     }
 
-    // MARK: - In-memory retention
-
     /** Load a keypair restored from the biometric cache (cold launch). */
     suspend fun load(publicKey: ByteArray, privateKey: ByteArray) = mutex.withLock {
         this.publicKey = publicKey.copyOf()
@@ -188,8 +180,6 @@ class IdentityVault(private val sodium: SodiumOps) {
         privateKey = null
         publicKey = null
     }
-
-    // MARK: - KDF
 
     /** Argon2id (ALG_ARGON2ID13) → 32-byte vault key, parameters FROM THE BLOB. */
     private fun deriveVaultKey(password: String, kdf: KdfParams): ByteArray {

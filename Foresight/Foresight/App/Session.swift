@@ -37,7 +37,6 @@ final class Session: ObservableObject {
     @Published private(set) var phase: Phase = .unauthenticated
     @Published private(set) var currentUser: UserDTO?
 
-    /// E2EE identity state, observed by views for spinners / locked banners.
     @Published private(set) var unlockPhase: UnlockPhase = .locked
     /// Drives the root password re-unlock sheet (decoupled from `unlockPhase`
     /// so transient `.unlocking` flips don't dismiss/re-present it).
@@ -76,7 +75,6 @@ final class Session: ObservableObject {
         return false
     }
 
-    /// True when the E2EE identity key is available in memory.
     var isIdentityUnlocked: Bool { unlockPhase == .unlocked }
 
     // MARK: - Login / migration
@@ -175,7 +173,6 @@ final class Session: ObservableObject {
         }
     }
 
-    /// User dismissed the password sheet without unlocking.
     func cancelPasswordUnlock() {
         isPresentingPasswordUnlock = false
         unlockPhase = .locked

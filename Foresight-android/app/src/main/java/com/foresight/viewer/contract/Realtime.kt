@@ -51,7 +51,6 @@ data class CommandMessage(
     val type: String = "command",
     /** Unique command id (for ack correlation). */
     val id: String = UUID.randomUUID().toString(),
-    /** Target camera id. */
     val target: String,
     val action: CommandAction,
     val args: CommandArgs? = null,
@@ -113,8 +112,6 @@ data class RekeyMessage(
     val epoch: Int,
 ) : DataMessage
 
-// MARK: - Participant identity helpers (mirror realtime.ts)
-
 object Foresight {
     fun homeRoom(homeId: String): String = "home:$homeId"
     fun cameraIdentity(cameraId: String): String = "camera:$cameraId"
@@ -156,8 +153,6 @@ object Foresight {
         }
     }
 }
-
-// MARK: - (de)serialization
 
 /**
  * JSON (de)serialization for LiveKit data payloads. Mirrors ForesightCodec in

@@ -1,7 +1,6 @@
 /**
- * AudioStream (decoded PCM) → s16le → sink. Phase: AUDIO (v1 records video only;
- * RECORD_AUDIO=false by default). Implemented now so M4 (audio + A/V sync) only
- * has to wire a second ffmpeg input and PTS alignment, not build capture.
+ * AudioStream (decoded PCM) → s16le → sink. Not on the v1 recording path
+ * (RECORD_AUDIO=false by default).
  */
 import { AudioStream, type RemoteTrack } from "@livekit/rtc-node";
 import type { Logger } from "../log.js";

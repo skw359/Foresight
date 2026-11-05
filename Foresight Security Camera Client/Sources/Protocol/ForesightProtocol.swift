@@ -370,7 +370,6 @@ public enum DataMessage: Codable {
         }
     }
 
-    /// The message's protocol version (`v`).
     public var version: Int {
         switch self {
         case .command(let m): return m.v

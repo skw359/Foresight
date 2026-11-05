@@ -10,15 +10,11 @@
  * Everything — including the device cache — is wiped on signOut and on any 401
  * (both clear the token → onAuthChange), so no session ⇒ no key material at rest.
  *
- * Cold reload, opted in: the JWT survives in localStorage and the identity is
- * silently restored from the device cache, so the login password stays the only
- * password the user types (the web analog of §7.4's Face ID cache). Opted out
- * (the default) or when restore comes up empty (new device, cleared storage,
- * private mode), `ensureIdentity()` prompts for the password and re-unlocks in
- * the KDF worker (spinner, never freezes the UI). The same modal doubles as
- * first-login setup when GET /me/keys has no vault yet. The opt-in is offered
- * on the login form, in the unlock prompt, and in Settings; disabling it clears
- * the cache immediately.
+ * Cold reload, opted in: the identity is silently restored from the device cache
+ * (the web analog of §7.4's Face ID cache). Opted out (the default) or when
+ * restore comes up empty (new device, cleared storage, private mode),
+ * `ensureIdentity()` prompts for the password and re-unlocks in the KDF worker.
+ * The same modal doubles as first-login setup when GET /me/keys has no vault yet.
  */
 import {
   createContext,
@@ -71,7 +67,6 @@ interface E2EEContextValue {
   setKeepUnlocked: (enabled: boolean) => void;
   /** Cached HMK base64 for a home AT THE GIVEN EPOCH, or null (a stale-epoch cache entry never matches). */
   getCachedHomeKey: (homeId: string, epoch: number) => string | null;
-  /** Cache an unsealed HMK base64 at an epoch. */
   cacheHomeKey: (homeId: string, epoch: number, hmkBase64: string) => void;
   /** Unseal an inline sealed key (e.g. from /rt/token) and cache it. May prompt. */
   unsealInto: (homeId: string, sealed: SealedKey) => Promise<string>;
@@ -80,7 +75,6 @@ interface E2EEContextValue {
    * When `expectedEpoch` is given, a cached HMK at a DIFFERENT epoch is ignored (re-fetched).
    */
   ensureHomeKey: (homeId: string, expectedEpoch?: number) => Promise<HomeKeyState>;
-  /** Wipe all in-memory key material. */
   wipe: () => void;
 }
 
@@ -93,7 +87,6 @@ export function E2EEProvider({ children }: { children: ReactNode }) {
   const [publicKeyB64, setPublicKeyB64] = useState<string | null>(null);
   const [keepUnlocked, setKeepUnlockedState] = useState(isKeepUnlockedEnabled);
 
-  // Unlock prompt plumbing.
   const [prompt, setPrompt] = useState<{ mode: "unlock" | "setup" } | null>(null);
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -101,9 +94,8 @@ export function E2EEProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<{ resolve: (i: Identity) => void; reject: (e: Error) => void } | null>(null);
   const inFlightRef = useRef<Promise<Identity> | null>(null);
 
-  // Run the §3.2 self-test once, before the first crypto use (lazy: this is what
-  // "the provider initializes the self-test" means — it never eagerly loads the
-  // 150 KB WASM for users who never touch E2EE; §9.2).
+  // Self-test runs lazily before the first crypto use, so the 150 KB WASM never
+  // loads for users who never touch E2EE (§9.2).
   const readyRef = useRef<Promise<void> | null>(null);
   const ready = useCallback(() => (readyRef.current ??= ensureSelfTest()), []);
 
@@ -113,8 +105,6 @@ export function E2EEProvider({ children }: { children: ReactNode }) {
     setPublicKeyB64(identity.publicKeyB64);
     if (persist && isKeepUnlockedEnabled()) {
       const userId = getUser()?.id;
-      // Best-effort device cache (keystore.ts) so the next cold load restores
-      // silently instead of re-prompting; the unlock modal remains the fallback.
       if (userId) void persistIdentity(userId, identity);
     }
   }, []);
@@ -342,8 +332,6 @@ export function useE2EE(): E2EEContextValue {
   if (!ctx) throw new Error("useE2EE must be used within <E2EEProvider>");
   return ctx;
 }
-
-/* ------------------------------------------------------------- unlock modal */
 
 function UnlockPrompt({
   mode,

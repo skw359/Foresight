@@ -16,15 +16,13 @@ import Foundation
 import Security
 
 enum KeychainStore {
-    /// Service namespace for all Foresight items.
     private static let service = "com.foresight.cameraclient.deviceSecret"
 
-    /// Store (or overwrite) the device secret for a camera.
     @discardableResult
     static func saveDeviceSecret(_ secret: String, cameraId: String) -> Bool {
         guard let data = secret.data(using: .utf8) else { return false }
 
-        // Delete any existing item first so we always upsert cleanly.
+        // Delete first so we always upsert cleanly.
         let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -55,7 +53,6 @@ enum KeychainStore {
         SecItemUpdate(query as CFDictionary, update as CFDictionary)
     }
 
-    /// Read the device secret for a camera, if present.
     static func loadDeviceSecret(cameraId: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -73,7 +70,6 @@ enum KeychainStore {
         return secret
     }
 
-    /// Remove the device secret for a camera (used on unpair).
     static func deleteDeviceSecret(cameraId: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

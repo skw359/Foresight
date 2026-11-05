@@ -108,7 +108,6 @@ export function DevCameraPage() {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 40));
   }, []);
 
-  /* -------------------------------------------- broadcast helpers ------- */
 
   const broadcastState = useCallback(async (next: CameraState) => {
     const room = roomRef.current;
@@ -147,7 +146,6 @@ export function DevCameraPage() {
     await room.localParticipant.publishData(encodeDataMessage(ack), { reliable: true });
   }, []);
 
-  /* -------------------------------------------- command handling -------- */
 
   const handleCommand = useCallback(
     async (cmd: CommandMessage) => {
@@ -205,7 +203,6 @@ export function DevCameraPage() {
     [patchState, sendAck, addLog],
   );
 
-  /* -------------------------------------------- start / stop ------------ */
 
   const start = useCallback(async () => {
     if (!token.trim()) {
@@ -343,7 +340,6 @@ export function DevCameraPage() {
     [handleCommand],
   );
 
-  /* -------------------------------------------- telemetry loop ---------- */
 
   useEffect(() => {
     if (phase !== "live") return;
@@ -395,7 +391,6 @@ export function DevCameraPage() {
     };
   }, [phase]);
 
-  /* -------------------------------------------- cleanup on unmount ------ */
 
   useEffect(() => {
     return () => {
@@ -407,7 +402,6 @@ export function DevCameraPage() {
     };
   }, []);
 
-  /* -------------------------------------------- render ------------------ */
 
   const stage = useNavStage();
   return (

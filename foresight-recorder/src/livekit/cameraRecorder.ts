@@ -243,7 +243,7 @@ export class CameraRecorder {
     this.clearWatchdog();
     this.state = "reacquiring";
     this.log.info("track gone — pausing, awaiting republish");
-    void this.finalizeFfmpeg(); // close the current segment cleanly
+    void this.finalizeFfmpeg();
   }
 
   /**
@@ -303,7 +303,6 @@ export class CameraRecorder {
     };
   }
 
-  // --- frame sink: geometry handling, pacing, backpressure, respawn ---------
   private sink(data: Uint8Array, w: number, h: number, tsUs: number): void {
     if (this.state === "stopped" || this.state === "awaiting_consent" || this.state === "revoked") {
       return;
@@ -540,7 +539,6 @@ export class CameraRecorder {
     if (ff) await ff.finalize();
   }
 
-  // --- frame watchdog (§8.2): silent-stream detection ------------------------
   /**
    * A self-rescheduling timer (not per-frame churn) that fires when no frame has
    * arrived for `frameStallMs` while RECORDING. `.unref()` so it never keeps the

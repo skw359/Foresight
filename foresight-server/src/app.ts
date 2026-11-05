@@ -184,11 +184,8 @@ export function buildApp(opts: { logger?: boolean } = {}): FastifyInstance {
     logger: opts.logger ? fastifyLogger() : false,
     // Behind a reverse proxy, req.ip must be the real client (rate-limit key).
     trustProxy: config.trustProxy,
-    // Fastify's stock request logging emits two records per request ("incoming
-    // request" then "request completed") and neither carries method+url+status
-    // together. The onResponse hook below replaces both with one record that
-    // does — same information, one line, and the console theme can align it
-    // into a proper HTTP column.
+    // Stock logging emits two records per request, neither with method+url+status
+    // together; the onResponse hook below replaces both with a single record.
     disableRequestLogging: true,
   });
 
@@ -238,7 +235,6 @@ export function buildApp(opts: { logger?: boolean } = {}): FastifyInstance {
     (_req, body, done) => done(null, body),
   );
 
-  // Translate thrown HttpErrors (and anything else) into the ApiError shape.
   installErrorHandler(app);
 
   app.get("/health", async () => ({ ok: true }));

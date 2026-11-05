@@ -9,10 +9,9 @@
  *   /homes/:homeId/cameras/:cameraId — full-screen + control panel (protected)
  *   /dev/camera       — in-browser dev camera harness (protected)
  *
- * The TopBar is rendered once here (persistent, never animated). Only the page
- * body below it transitions on navigation: the outgoing page fades out for
- * 0.25s, then the incoming page fades in for 0.25s. Pinning <Routes> to a held
- * `displayLocation` keeps the old page on screen while it fades out.
+ * The TopBar is persistent; only the page body fades (0.25s out, then 0.25s in).
+ * <Routes> is pinned to a held `displayLocation` so the old page stays on screen
+ * while it fades out.
  */
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -31,7 +30,6 @@ import { DevCameraPage } from "./pages/DevCameraPage";
 
 const AUTH_PATHS = ["/login", "/register"];
 
-/** Inner shell — rendered inside NavProgressProvider so it can call useNavProgress. */
 function AppShell() {
   const location = useLocation();
   const [displayLocation, setDisplayLocation] = useState(location);
@@ -48,16 +46,13 @@ function AppShell() {
       if (location !== displayLocation) setDisplayLocation(location);
       return;
     }
-    // Auth redirects must swap instantly — never via the 250ms fade-hold. The
-    // hold keeps the OUTGOING page mounted while the URL has already moved; if
-    // that held page is a route that redirects under the current auth state
-    // (RequireAuth -> /login, or the signed-in guard on /login|/register -> /),
-    // it re-fires its <Navigate> on every re-render and the browser throttles
-    // the runaway history calls (blank page + "Throttling navigation"). This
-    // must cover BOTH ends of the transition: leaving an auth page AND arriving
-    // at one (e.g. a signed-out visitor hitting "/" is redirected to /login —
-    // here the OUTGOING page is "/", so only the incoming check catches it).
-    // TopBar is hidden on auth pages, so there is nothing to fade anyway.
+    // Auth redirects must swap instantly, never via the fade-hold. The hold keeps
+    // the OUTGOING page mounted while the URL has already moved; if that page
+    // redirects under the current auth state (RequireAuth -> /login, or the
+    // signed-in guard on /login|/register -> /), it re-fires its <Navigate> on
+    // every re-render and the browser throttles history calls (blank page).
+    // Check BOTH ends: a signed-out visitor hitting "/" is redirected to /login,
+    // where the outgoing page is "/" and only the incoming check catches it.
     if (
       AUTH_PATHS.includes(displayLocation.pathname) ||
       AUTH_PATHS.includes(location.pathname)
@@ -66,7 +61,6 @@ function AppShell() {
       setStage("in");
       return;
     }
-    // Start the bar immediately on click — before the new page even mounts.
     start();
     setStage("out");
     const id = setTimeout(() => {

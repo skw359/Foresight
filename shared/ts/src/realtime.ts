@@ -42,7 +42,6 @@ export interface CommandArgs {
 }
 
 interface BaseMessage {
-  /** Protocol version (PROTOCOL_VERSION). */
   v: number;
   type: DataMessageType;
 }
@@ -52,7 +51,6 @@ export interface CommandMessage extends BaseMessage {
   type: "command";
   /** Unique command id (for ack correlation). */
   id: string;
-  /** Target camera id. */
   target: string;
   action: CommandAction;
   args?: CommandArgs;
@@ -89,7 +87,6 @@ export interface TelemetryMessage extends BaseMessage {
   charging: boolean | null;
   wifi: WifiInfo | null;
   thermal: ThermalState | null;
-  /** Number of viewers currently subscribed. */
   viewerCount: number;
 }
 
@@ -117,8 +114,6 @@ export type DataMessage =
   | StateMessage
   | TelemetryMessage
   | RekeyMessage;
-
-/* ---------------------------------------------------- Participant identity */
 
 /** Metadata the backend embeds in each LiveKit token; readable by peers. */
 export interface ParticipantMetadata {
@@ -152,8 +147,6 @@ export function parseIdentity(identity: string): ParsedIdentity | null {
   if (prefix === "user" && id) return { role: "viewer", id };
   return null;
 }
-
-/* ------------------------------------------------------ (de)serialization */
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

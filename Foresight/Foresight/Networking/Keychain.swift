@@ -17,7 +17,6 @@ enum Keychain {
         case authToken = "authToken"
     }
 
-    /// Account for the biometric-gated E2EE identity key cache (see below).
     private static let identityAccount = "e2eeIdentityKey"
     /// Non-secret hint: whether a biometric identity item was cached, so the UI
     /// can offer Face ID vs. going straight to a password prompt WITHOUT probing
@@ -31,7 +30,6 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: item.rawValue,
         ]
-        // Replace any existing value atomically.
         SecItemDelete(query as CFDictionary)
         var attributes = query
         attributes[kSecValueData as String] = data
@@ -73,13 +71,12 @@ enum Keychain {
         SecItemDelete(query as CFDictionary)
     }
 
-    // MARK: - Biometric E2EE identity cache (plan §7.4 / anchor Keychain.swift:15)
-    //
-    // Caches the DECRYPTED identity keypair (publicKey(32) || privateKey(32))
-    // behind Face ID / Touch ID with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
-    // + a `.biometryCurrentSet` access control, so a cold launch (JWT restored but
-    // the in-memory key gone — Session.swift:39 region) can restore the identity
-    // without re-typing the password. Wiped on sign-out / session expiry.
+    // MARK: - Biometric E2EE identity cache
+    // Caches the DECRYPTED identity keypair (publicKey(32) || privateKey(32)) behind
+    // Face ID / Touch ID with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and a
+    // `.biometryCurrentSet` access control, so a cold launch (JWT restored, in-memory
+    // key gone) can restore the identity without re-typing the password. Wiped on
+    // sign-out / session expiry.
 
     /// Store the raw identity payload behind biometrics. Best-effort: if the
     /// device has no biometrics / secure enclave, the item simply isn't created

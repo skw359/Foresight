@@ -21,7 +21,7 @@ import { clientKey, enforce, limits } from "../lib/rateLimit.js";
 import { publicKeySchema } from "../lib/e2ee.js";
 import { resolvePairingServerUrl } from "../lib/settings.js";
 
-const PAIRING_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const PAIRING_TTL_MS = 10 * 60 * 1000;
 
 const capabilities = z.object({
   lenses: z.array(z.number()).max(16),

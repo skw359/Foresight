@@ -93,7 +93,6 @@ final class LiveViewerModel: ObservableObject {
         enqueue { [self] in await deactivate(leaving, wasTalking: wasTalking) }
     }
 
-    /// Move the live view to another camera in the Home.
     func select(_ next: LiveCamera) {
         guard next.id != camera.id else { return }
         let leaving = camera

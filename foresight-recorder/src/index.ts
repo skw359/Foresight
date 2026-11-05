@@ -125,12 +125,10 @@ async function main(): Promise<void> {
   for (const warning of insecureWarnings) log.warn(`INSECURE (FORESIGHT_INSECURE_DEV=1): ${warning}`);
   await checkFfmpeg();
 
-  // E2EE identity (runs the crypto self-test) + key manager + room manager.
   const identity = RecorderIdentity.loadOrCreate(config.recorderKeyPath);
   const keyManager = new KeyManager(identity);
   const rm = new RoomManager(keyManager);
 
-  // Register our pubkey with the server; keep retrying in the background.
   const registered = registerRecorderIdentity(identity.publicKey);
 
   const refresh = (reason: string): void => {
@@ -151,7 +149,6 @@ async function main(): Promise<void> {
   // our sealed keys — but never block boot on it (it keeps retrying regardless).
   await Promise.race([registered, sleep(3000)]);
 
-  // Boot reconcile: re-arm anything that should already be recording.
   void reconcileOnce(rm, keyManager).catch((err) =>
     log.warn("initial reconcile failed", { err: String(err) }),
   );

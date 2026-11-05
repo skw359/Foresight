@@ -101,8 +101,6 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-// ------------------------------------------------------------- Day indexes
-
 /** Filename shape of a day index; content is validated separately (isDayIndex). */
 const DAY_INDEX_NAME_RE = /^day_\d{8}\.json$/;
 
@@ -347,8 +345,6 @@ export async function listRecentSegments(
   return out;
 }
 
-// ---------------------------------------------------------------- Listing cache
-//
 // Full-tree listings (coverage endpoint + range playlists) are the expensive
 // path: one readdir over ~200k files plus a stat sweep. The dashboard hits
 // them repeatedly (coverage on load, range playlist refreshes while scrubbing),
@@ -419,8 +415,6 @@ export async function listSegmentsCached(
 export function invalidateListingCache(dir: string): void {
   listingCache.delete(dir);
 }
-
-// ------------------------------------------------------------------ Clip pieces
 
 /** One ordered byte source for the clip remux pipeline. */
 export interface ClipPiece {
@@ -496,8 +490,6 @@ export async function pipePieces(
   dest.end();
 }
 
-// ---------------------------------------------------------------------- Delete
-
 /**
  * Permanently delete every segment whose start epoch falls in the half-open
  * window [fromEpoch, toEpoch) under a camera dir (the segments backing one
@@ -547,11 +539,10 @@ export async function deleteSegments(
       }
     }
 
-    // Consolidated days.
     for (const { indexPath, bucketDir, index } of indexes) {
       const inWindow = (s: DayIndexSegment) => s.epoch >= fromEpoch && s.epoch < toEpoch;
       const removed = index.segments.filter(inWindow);
-      if (removed.length === 0) continue; // day untouched
+      if (removed.length === 0) continue;
       const kept = index.segments.filter((s) => !inWindow(s));
 
       const dayFilePath = path.join(bucketDir, index.file); // index.file is validated canonical

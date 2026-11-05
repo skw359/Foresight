@@ -139,7 +139,6 @@ async function pairCamera(token: string, homeId: string, name = "Cam") {
   return { cameraId: body.camera.id, deviceSecret: body.deviceSecret, serverUrl: ticket.serverUrl };
 }
 
-// ================================================================== SEC-01
 describe("SEC-01 server admin + registration policy", () => {
   it("makes the first account the admin and closes registration after it", async () => {
     const first = await register("admin@example.com");
@@ -197,7 +196,6 @@ describe("SEC-01 server admin + registration policy", () => {
   });
 });
 
-// ================================================================== SEC-02
 describe("SEC-02 secret hygiene", () => {
   it("refuses placeholder and short secrets unless insecure dev mode is on", async () => {
     const { checkSecret, secretProblem } = await import("../src/lib/secrets.js");
@@ -219,7 +217,6 @@ describe("SEC-02 secret hygiene", () => {
   });
 });
 
-// ================================================================== SEC-04
 describe("SEC-04 brute force + revocable sessions", () => {
   it("refuses the 6th failed login for an account within a minute", async () => {
     await newUser("victim");
@@ -298,7 +295,6 @@ describe("SEC-04 brute force + revocable sessions", () => {
   });
 });
 
-// ============================================================ SEC-03 / AUTHZ
 describe("SEC-03 revocation + AUTHZ-01/02 owner rules", () => {
   let owner: { token: string; id: string };
   let member: { token: string; id: string };
@@ -405,7 +401,6 @@ describe("SEC-03 revocation + AUTHZ-01/02 owner rules", () => {
   });
 });
 
-// ================================================================= AUTHZ-03
 describe("AUTHZ-03 narrow LiveKit grants", () => {
   it("lets viewers publish only microphone and cameras only camera + microphone", async () => {
     const o = await newUser("grants-owner");
@@ -424,7 +419,6 @@ describe("AUTHZ-03 narrow LiveKit grants", () => {
   });
 });
 
-// =================================================================== API-01
 describe("API-01 error mapping + races", () => {
   it("maps framework 4xx errors instead of returning 500", async () => {
     const big = await app.inject({
@@ -463,7 +457,6 @@ describe("API-01 error mapping + races", () => {
   });
 });
 
-// ================================================================== HOOK-01
 describe("HOOK-01 webhook ordering", () => {
   async function webhook(event: string, identity: string, sid: string) {
     const body = JSON.stringify({ event, id: `EV_${Math.random()}`, room: { name: "r" }, participant: { sid, identity } });
@@ -490,7 +483,6 @@ describe("HOOK-01 webhook ordering", () => {
   });
 });
 
-// =================================================================== CAM-01
 describe("CAM-01 camera self-unpair", () => {
   it("removes the camera from the server when the phone unpairs", async () => {
     const o = await newUser("unpair-owner");
@@ -507,7 +499,6 @@ describe("CAM-01 camera self-unpair", () => {
   });
 });
 
-// ============================================================== E2EE-01..03
 describe("E2EE propagation, rotation and vault replacement", () => {
   const vault = (fill: number) => ({
     publicKey: b64(32, fill),
@@ -610,7 +601,6 @@ describe("E2EE propagation, rotation and vault replacement", () => {
   });
 });
 
-// =================================================================== REC-06
 describe("REC-06 clip export limits", () => {
   it("rejects over-long ranges and signs range-scoped download URLs", async () => {
     const o = await newUser("clip-owner");
@@ -637,7 +627,6 @@ describe("REC-06 clip export limits", () => {
   });
 });
 
-// =================================================================== SEC-05
 describe("SEC-05 headers + CORS", () => {
   it("sends baseline security headers and only reflects allowed origins", async () => {
     const res = await app.inject({ method: "GET", url: "/health", headers: { origin: "https://evil.example" } });

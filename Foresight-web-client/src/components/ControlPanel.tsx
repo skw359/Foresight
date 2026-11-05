@@ -144,7 +144,6 @@ export function ControlPanel({
     if (!res.ok) onToast(`${label} failed: ${res.error ?? "no ack"}`, true);
   }
 
-  /* --------------------------------------------------------- quality */
   async function setQuality(q: QualityPreset) {
     // Pin the local subscription layer immediately.
     const pub = camera.participant?.getTrackPublication(Track.Source.Camera);
@@ -158,26 +157,22 @@ export function ControlPanel({
     if (!res.ok) onToast(res.error ?? "Set quality failed", true);
   }
 
-  /* --------------------------------------------------------- torch */
   function toggleTorch() {
     void dispatch("Flashlight", () =>
       sendCommand(camera.id, "torch", { on: !camera.torchOn }),
     );
   }
 
-  /* --------------------------------------------------------- lens */
   function switchLens(lens: number) {
     void dispatch("Switch lens", () =>
       sendCommand(camera.id, "switchLens", { lens }),
     );
   }
 
-  /* --------------------------------------------------------- zoom */
   function commitZoom(zoom: number) {
     void dispatch("Zoom", () => sendCommand(camera.id, "setZoom", { zoom }));
   }
 
-  /* --------------------------------------------------------- talk (PTT) */
   async function talkDown() {
     if (talking) return;
     setTalking(true);
@@ -197,7 +192,6 @@ export function ControlPanel({
     await setMicrophoneEnabled(false).catch(() => undefined);
   }
 
-  /* --------------------------------------------------------- fullscreen */
   function toggleFullscreen() {
     if (!isFullscreen) {
       getVideoWrap()?.requestFullscreen().catch(() => undefined);
@@ -206,7 +200,6 @@ export function ControlPanel({
     }
   }
 
-  /* --------------------------------------------------------- snapshot */
   function doSnapshot() {
     const el = getVideoEl();
     if (!el) {
@@ -222,7 +215,6 @@ export function ControlPanel({
     }
   }
 
-  /* --------------------------------------------------------- record */
   function toggleRecord() {
     const el = getVideoEl();
     if (!recording) {

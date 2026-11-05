@@ -6,8 +6,7 @@
  * to agree on one, and historically did not: the recorder used to write whatever
  * resolution the SFU was forwarding at the time, so a single camera-day held runs
  * of 1280x720, 960x540, 480x270 and 320x180. Remuxing such a range with `-c copy`
- * produces a file whose header claims the FIRST piece's size for the whole clip —
- * the "downloads at a tiny resolution" bug.
+ * produces a file whose header claims the FIRST piece's size for the whole clip.
  *
  * The recorder now pins its subscription and encodes every segment for a camera
  * at one geometry, so new footage is uniform and takes the fast copy path. Older

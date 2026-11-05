@@ -3,15 +3,12 @@
 //  Foresight Camera Client
 //
 //  Top-level coordinator. Decides whether to show the pairing flow or camera
-//  mode, owns the active RealtimeSession, and manages app-wide concerns:
-//    - hydrating a saved pairing on launch (skip pairing if already paired)
-//      and RESUMING streaming when it was on before (REL-01: a relaunch after a
-//      power cut, jetsam kill or reboot must not leave the camera dark until
-//      someone taps "Go Live")
-//    - nudging the session's supervisor when the app becomes active
-//    - AV permission requests
-//    - keeping the screen awake (isIdleTimerDisabled) while streaming
-//    - unpairing on the server too (CAM-01)
+//  mode, owns the active RealtimeSession, and manages app-wide concerns.
+//
+//  A saved pairing is hydrated on launch and streaming RESUMES if it was on
+//  before: a relaunch after a power cut, jetsam kill or reboot must not leave the
+//  camera dark until someone taps "Go Live". Unpairing also removes the camera
+//  on the server.
 //
 
 import AVFoundation
@@ -61,7 +58,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Load any persisted pairing and route accordingly.
     func hydrate() {
         if let stored = PairingStore.load() {
             paired = stored
@@ -87,7 +83,7 @@ final class AppModel: ObservableObject {
         await startStreaming()
     }
 
-    // MARK: Existing-camera E2EE migration (plan §6 migrate-existing-camera)
+    // MARK: Existing-camera E2EE migration
 
     /// A camera paired before E2EE has a deviceSecret but no keypair. On the first
     /// post-update boot it generates one and registers the public key, retrying
@@ -95,8 +91,7 @@ final class AppModel: ObservableObject {
     /// registered their key in /pair/claim, so this is a no-op for them.
     private func startKeyMigrationIfNeeded(for paired: PairedCamera) {
         guard !CameraKeyManager.isPubkeyRegistered else { return }
-        // Capture only the Sendable String fields — not the (non-Sendable,
-        // public) PairedCamera — so the Task closure is concurrency-clean.
+        // Capture only the Sendable String fields, not the non-Sendable PairedCamera.
         let cameraId = paired.cameraId
         let deviceSecret = paired.deviceSecret
         let serverUrl = paired.serverUrl
@@ -136,7 +131,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Called by the pairing flow once a claim succeeds.
     func completePairing(_ camera: PairedCamera) {
         PairingStore.save(camera)
         paired = camera
@@ -190,14 +184,13 @@ final class AppModel: ObservableObject {
         unpairNotice = nil
     }
 
-    /// Keep the display awake while streaming so the camera never sleeps.
     func setKeepAwake(_ on: Bool) {
         UIApplication.shared.isIdleTimerDisabled = on
     }
 
     // MARK: Permissions
 
-    /// Request camera + microphone access; returns true only if both granted.
+    /// Returns true only if both camera and microphone are granted.
     func requestPermissions() async -> Bool {
         let cam = await AVCaptureDevice.requestAccess(for: .video)
         let mic = await AVCaptureDevice.requestAccess(for: .audio)

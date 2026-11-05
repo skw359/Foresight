@@ -2,9 +2,8 @@ import { useEffect, useRef } from "react";
 
 /**
  * Animated visual for the auth screen: a glowing accent-colored line that
- * draws itself across a faint grid. Ported from the Journey login visual and
- * recolored to Foresight's coral accent. Purely decorative (aria-hidden via
- * the wrapper); honors prefers-reduced-motion by snapping to the final frame.
+ * draws itself across a faint grid. Purely decorative (aria-hidden via the
+ * wrapper); honors prefers-reduced-motion by snapping to the final frame.
  */
 
 const ACCENT = "#ff634a";
@@ -76,7 +75,6 @@ export default function VisualCanvas() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
 
-      // Grid
       ctx.strokeStyle = GRID_COLOR;
       ctx.lineWidth = 1;
       for (let x = GRID_STEP; x < W; x += GRID_STEP) {

@@ -45,7 +45,6 @@ const sodium = await (async () => {
 
 const b64 = (u8) => Buffer.from(u8).toString("base64");
 
-// ── Inputs ──────────────────────────────────────────────────────────────────
 const password = "correct horse battery staple — foresight M0";
 const kdfSalt = fixedBytes("kdf-salt", sodium.crypto_pwhash_SALTBYTES); // 16 B
 const identitySeed = fixedBytes("identity-seed", sodium.crypto_box_SEEDBYTES); // 32 B
@@ -54,7 +53,7 @@ const hmk = fixedBytes("home-media-key", 32);
 const gcmIv = fixedBytes("gcm-iv", 12);
 const gcmPlaintext = "foresight E2EE M0 parity frame";
 
-// ── 1. Argon2id password → vault key ───────────────────────────────────────
+// 1. Argon2id password → vault key
 const vaultKey = sodium.crypto_pwhash(
   32,
   password,
@@ -64,19 +63,19 @@ const vaultKey = sodium.crypto_pwhash(
   sodium.crypto_pwhash_ALG_ARGON2ID13,
 );
 
-// ── 2. Identity keypair (deterministic from seed) ──────────────────────────
+// 2. Identity keypair (deterministic from seed)
 const identity = sodium.crypto_box_seed_keypair(identitySeed);
 
-// ── 3. Wrap the private key: crypto_secretbox_easy(sk, nonce, vaultKey) ────
+// 3. Wrap the private key: crypto_secretbox_easy(sk, nonce, vaultKey)
 const wrappedPrivateKey = sodium.crypto_secretbox_easy(identity.privateKey, wrapNonce, vaultKey);
 
-// ── 4. Seal the HMK to the identity pubkey (randomized — frozen once) ──────
+// 4. Seal the HMK to the identity pubkey (randomized — frozen once)
 const sealedHmk = sodium.crypto_box_seal(hmk, identity.publicKey);
 
-// ── 5. The LiveKit setKey passphrase: base64(HMK) as a STRING ──────────────
+// 5. The LiveKit setKey passphrase: base64(HMK) as a STRING
 const setKeyString = b64(hmk);
 
-// ── 6. LiveKit's derived AES key (installed livekit-client@2.19.2 worker):
+// 6. LiveKit's derived AES key (installed livekit-client@2.19.2 worker):
 //      PBKDF2-SHA-256(utf8(passphrase), utf8(ratchetSalt), 100000) → 128-bit AES-GCM
 const derivedAesKey = pbkdf2Sync(
   Buffer.from(setKeyString, "utf8"),
@@ -86,11 +85,10 @@ const derivedAesKey = pbkdf2Sync(
   "sha256",
 );
 
-// ── 7. AES-128-GCM sample under the derived key (ciphertext || 16-B tag) ───
+// 7. AES-128-GCM sample under the derived key (ciphertext || 16-B tag)
 const cipher = createCipheriv("aes-128-gcm", derivedAesKey, gcmIv);
 const ct = Buffer.concat([cipher.update(gcmPlaintext, "utf8"), cipher.final(), cipher.getAuthTag()]);
 
-// ── Self-checks before writing ──────────────────────────────────────────────
 {
   const skRoundTrip = sodium.crypto_secretbox_open_easy(wrappedPrivateKey, wrapNonce, vaultKey);
   if (b64(skRoundTrip) !== b64(identity.privateKey)) throw new Error("secretbox round-trip failed");

@@ -3,9 +3,6 @@ import react from "@vitejs/plugin-react";
 /// <reference types="vitest/config" />
 import { defineConfig } from "vitest/config";
 
-// The dashboard talks to the Foresight backend (default :3199). The LiveKit
-// ws URL is never hardcoded here — it always arrives in /rt/token responses.
-
 const require = createRequire(import.meta.url);
 
 // libsodium-wrappers-sumo's ESM build does a nested bare `import "libsodium-sumo"`

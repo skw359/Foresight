@@ -38,7 +38,6 @@ ok()  { printf '    %s✓%s %s\n' "$G" "$Z" "$*"; }
 bad() { printf '    %s✗%s %s\n' "$R" "$Z" "$*"; }
 note(){ printf '    %s•%s %s\n' "$Y" "$Z" "$*"; }
 
-# --------------------------------------------------------------- readiness
 REC_SECRET="$(sed -n 's/^RECORDER_SHARED_SECRET=//p' "$REPO/foresight-recorder/.env" 2>/dev/null | head -1)"
 
 probe_livekit()          { timeout 2 bash -c ': >/dev/tcp/127.0.0.1/7880'; }
@@ -60,7 +59,6 @@ wait_for() {
   return 1
 }
 
-# ------------------------------------------------------------------- stop
 LABEL=""; [ "$BACKEND_ONLY" = 1 ] && LABEL=" (backend only — leaving LiveKit up)"
 say "Stopping$LABEL"
 for (( i=${#UNITS[@]} - 1; i >= 0; i-- )); do
@@ -74,7 +72,6 @@ done
 # read look alarming even though the restart is fine. Clear it before starting.
 systemctl --user reset-failed "${UNITS[@]}" 2>/dev/null || true
 
-# ------------------------------------------------------------------ start
 say "Starting"
 rc=0
 for u in "${UNITS[@]}"; do
@@ -91,7 +88,6 @@ for u in "${UNITS[@]}"; do
   esac
 done
 
-# ----------------------------------------------------------------- report
 say "Status"
 for u in "${UNITS[@]}"; do
   state="$(systemctl --user is-active "$u" || true)"

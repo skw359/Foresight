@@ -2,16 +2,12 @@
 //  BackendClient.swift
 //  Foresight Camera Client
 //
-//  Thin REST client for the two endpoints the camera needs:
-//    - POST /pair/claim  (turn a PairingTicket + capabilities into a deviceSecret)
-//    - POST /rt/token    (turn a deviceSecret into a LiveKit publisher token)
-//
-//  All DTOs come from the locked ForesightProtocol contract.
+//  Thin REST client for the camera's endpoints. All DTOs come from the locked
+//  ForesightProtocol contract.
 //
 
 import Foundation
 
-/// Errors surfaced to the UI with human-readable messages.
 enum BackendError: LocalizedError {
     case badURL(String)
     case transport(Error)
@@ -37,7 +33,7 @@ enum BackendError: LocalizedError {
 // inside `URLSession.data(for:)`.
 @MainActor
 struct BackendClient {
-    /// Base server URL, e.g. "http://192.168.1.10:3199".
+    /// e.g. "http://192.168.1.10:3199".
     let serverUrl: String
     var session: URLSession = .shared
 
@@ -45,7 +41,7 @@ struct BackendClient {
 
     /// POST /pair/claim — exchange a pairing token + detected capabilities for a
     /// registered camera + its long-lived deviceSecret. `cameraPublicKey` is the
-    /// camera's E2EE X25519 public key (base64), now required by the contract.
+    /// camera's E2EE X25519 public key (base64).
     func claimPairing(token: String,
                       name: String,
                       capabilities: CameraCapabilities,
@@ -63,7 +59,7 @@ struct BackendClient {
         return try await post(path: "/rt/token", body: body)
     }
 
-    /// POST /cameras/:id/pubkey — existing-camera migration (plan §6). A camera
+    /// POST /cameras/:id/pubkey — existing-camera migration. A camera
     /// paired before E2EE registers its freshly-generated public key here,
     /// authenticated by its deviceSecret (same auth as the status sink). Success
     /// is any 2xx; a 409 means a DIFFERENT key is already registered (fatal — the
@@ -125,9 +121,8 @@ struct BackendClient {
         }
     }
 
-    /// POST that only cares about success/failure — the response body (if any) is
-    /// ignored. Throws `BackendError.http(status:…)` on any non-2xx, so callers
-    /// can pattern-match a specific status (e.g. 409 in the pubkey migration).
+    /// Throws `BackendError.http(status:…)` on any non-2xx, so callers can
+    /// pattern-match a specific status (e.g. 409 in the pubkey migration).
     private func postExpectingNoContent<Body: Encodable>(path: String, body: Body) async throws {
         guard let url = URL(string: serverUrl.trimmingTrailingSlash() + path) else {
             throw BackendError.badURL(serverUrl)

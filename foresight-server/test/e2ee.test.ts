@@ -68,7 +68,6 @@ afterAll(async () => {
   rmSync(dbDir, { recursive: true, force: true });
 });
 
-// --------------------------------------------------------------------- helpers
 const json = (res: { json: () => unknown }) => res.json();
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 const RECORDER_SECRET = { "x-recorder-secret": TEST_RECORDER_SECRET };
@@ -140,7 +139,6 @@ async function registerRecorder(fill: number) {
   });
 }
 
-// ================================================================= zero-knowledge
 it("server source contains no unsealing/KDF primitive names (zero-knowledge guard)", () => {
   const forbidden = ["crypto_box_seal" + "_open", "crypto_secretbox" + "_open", "crypto_" + "pwhash"];
   const srcDir = join(here, "..", "src");
@@ -157,7 +155,6 @@ it("server source contains no unsealing/KDF primitive names (zero-knowledge guar
   expect(offenders).toEqual([]);
 });
 
-// ============================================================== auth keyVault
 describe("auth responses carry keyVault", () => {
   it("register → null, set keys, login + GET /me/keys → the stored vault", async () => {
     const reg = await app.inject({
@@ -184,12 +181,10 @@ describe("auth responses carry keyVault", () => {
   });
 });
 
-// ============================================================ size validation
 describe("blob size validation (shape/size only)", () => {
   it("rejects wrong-length vault blobs and sealed keys", async () => {
     const { token, userId } = await register("size-user");
 
-    // publicKey must be 32 bytes.
     const badPk = await app.inject({
       method: "POST",
       url: "/me/keys",
@@ -198,7 +193,6 @@ describe("blob size validation (shape/size only)", () => {
     });
     expect(badPk.statusCode).toBe(400);
 
-    // nonce must be 24 bytes.
     const badNonce = await app.inject({
       method: "POST",
       url: "/me/keys",
@@ -207,7 +201,6 @@ describe("blob size validation (shape/size only)", () => {
     });
     expect(badNonce.statusCode).toBe(400);
 
-    // A correctly-sized vault is accepted.
     expect((await setKeys(token)).statusCode).toBe(204);
 
     // sealedKey must be 80 bytes — exercised via key/init on an activated-able Home.
@@ -224,7 +217,6 @@ describe("blob size validation (shape/size only)", () => {
   });
 });
 
-// ================================================= activation (key/init) 409 gate
 describe("home key activation (key/init)", () => {
   it("409s until every camera has a pubkey, then activates to epoch 1", async () => {
     const { token, userId } = await register("init-owner");
@@ -246,7 +238,6 @@ describe("home key activation (key/init)", () => {
     expect(details.reason).toBe("cameras_missing_pubkey");
     expect(details.cameras.map((c) => c.id)).toContain(cameraId);
 
-    // Camera registers its pubkey (device-authed migration path would do this).
     await prisma.camera.update({ where: { id: cameraId }, data: { publicKey: b64(32, 9) } });
 
     const ok = await app.inject({
@@ -263,7 +254,6 @@ describe("home key activation (key/init)", () => {
     expect(ok.statusCode).toBe(200);
     expect((json(ok) as { keyEpoch: number }).keyEpoch).toBe(1);
 
-    // Re-activation is refused.
     const again = await app.inject({
       method: "POST",
       url: `/homes/${homeId}/key/init`,
@@ -272,7 +262,6 @@ describe("home key activation (key/init)", () => {
     });
     expect(again.statusCode).toBe(409);
 
-    // The owner can read back their own sealed copy.
     const myKey = await app.inject({ method: "GET", url: `/homes/${homeId}/key`, headers: auth(token) });
     expect(json(myKey)).toEqual({ epoch: 1, sealedKey: b64(80, 1) });
   });
@@ -294,7 +283,6 @@ describe("home key activation (key/init)", () => {
   });
 });
 
-// ================================================================ submit idempotency
 describe("submit sealed keys", () => {
   it("is idempotent per holder+epoch and guards the epoch", async () => {
     const { token: ownerTok, userId: ownerId } = await register("submit-owner");
@@ -334,7 +322,6 @@ describe("submit sealed keys", () => {
     });
     expect(count).toBe(1);
 
-    // A stale epoch is rejected.
     const stale = await app.inject({
       method: "POST",
       url: `/homes/${homeId}/key`,
@@ -346,7 +333,6 @@ describe("submit sealed keys", () => {
   });
 });
 
-// ================================================================ rotate epoch guard
 describe("rotate", () => {
   it("bumps the epoch and rejects a stale fromEpoch", async () => {
     const { token, userId } = await register("rotate-owner");
@@ -389,7 +375,6 @@ describe("rotate", () => {
   });
 });
 
-// ============================================================ rt token sealed key
 describe("rt token carries keyEpoch + sealedHomeKey", () => {
   it("delivers the caller's sealed copy for both viewer and camera roles", async () => {
     const { token, userId } = await register("rt-owner");
@@ -444,7 +429,6 @@ describe("rt token carries keyEpoch + sealedHomeKey", () => {
   });
 });
 
-// ============================================================ holder-row cleanup
 describe("HomeKey holder cleanup (no FK on holderId)", () => {
   it("deletes a camera's rows on camera deletion", async () => {
     const { token, userId } = await register("del-cam-owner");
@@ -512,7 +496,6 @@ describe("HomeKey holder cleanup (no FK on holderId)", () => {
   });
 });
 
-// ================================================= recording gate + recorder consent
 describe("recording toggle consent gate + recorder consent", () => {
   let ownerTok = "";
   let ownerId = "";
@@ -566,7 +549,6 @@ describe("recording toggle consent gate + recorder consent", () => {
     });
     expect(res.statusCode).toBe(409);
     expect((json(res) as { details: { reason: string } }).details.reason).toBe("recorder_consent_required");
-    // Not persisted.
     const cam = await prisma.camera.findUnique({ where: { id: activeCam }, select: { recordingEnabled: true } });
     expect(cam?.recordingEnabled).toBe(false);
   });
@@ -592,7 +574,6 @@ describe("recording toggle consent gate + recorder consent", () => {
     });
     expect(rec.statusCode).toBe(200);
 
-    // HomeDTO now reports recorderConsented.
     const homes = await app.inject({ method: "GET", url: "/homes", headers: auth(ownerTok) });
     const dto = (json(homes) as Array<{ id: string; recorderConsented: boolean; keyEpoch: number }>).find(
       (h) => h.id === activeHome,
@@ -620,7 +601,6 @@ describe("recording toggle consent gate + recorder consent", () => {
   });
 });
 
-// ============================================== internal reconcile + recorder identity
 describe("internal recorder API", () => {
   let ownerTok = "";
   let ownerId = "";
@@ -718,7 +698,6 @@ describe("internal recorder API", () => {
   });
 });
 
-// ================================================================ pending holders
 describe("pending key holders (key/pending)", () => {
   it("at epoch 0 lists the activation candidates (members + cameras with pubkeys)", async () => {
     const { token, userId } = await register("pending-owner");
@@ -793,7 +772,6 @@ describe("pending key holders (key/pending)", () => {
   });
 });
 
-// ======================================================== §10.5 seal authority
 describe("seal authority (§10.5 first-contact owner-only)", () => {
   let ownerTok = "";
   let ownerId = "";
@@ -941,7 +919,6 @@ describe("seal authority (§10.5 first-contact owner-only)", () => {
   });
 });
 
-// ============================================================ owner key repair
 describe("owner key repair (DELETE /homes/:homeId/key/:holderType/:holderId)", () => {
   let ownerTok = "";
   let ownerId = "";
@@ -1067,7 +1044,6 @@ describe("owner key repair (DELETE /homes/:homeId/key/:holderType/:holderId)", (
   });
 });
 
-// =================================================================== key/disable
 describe("turning E2EE off (key/disable)", () => {
   let ownerTok = "";
   let ownerId = "";
