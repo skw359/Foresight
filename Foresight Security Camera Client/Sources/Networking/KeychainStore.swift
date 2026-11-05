@@ -6,6 +6,11 @@
 //  the camera's long-lived `deviceSecret`. Stored as a generic password keyed
 //  by camera id so re-pairing a different camera never collides.
 //
+//  Items are `…AfterFirstUnlockThisDeviceOnly`: readable after the first unlock
+//  following a reboot (an unattended camera must reconnect on its own), but
+//  never included in backups or migrated to another device — a restored
+//  backup must not carry this camera's credentials to a different phone.
+//
 
 import Foundation
 import Security
@@ -29,10 +34,25 @@ enum KeychainStore {
 
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
-        // Available after first unlock; survives reboots, fits an always-on camera.
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // Available after first unlock (survives reboots, fits an always-on
+        // camera) but bound to THIS device: excluded from backups.
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// Items written by earlier versions used `…AfterFirstUnlock` (backed up);
+    /// tighten them in place to `…ThisDeviceOnly`.
+    static func tightenAccessibility(service: String, account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let update: [String: Any] = [
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        SecItemUpdate(query as CFDictionary, update as CFDictionary)
     }
 
     /// Read the device secret for a camera, if present.
@@ -49,6 +69,7 @@ enum KeychainStore {
               let data = item as? Data,
               let secret = String(data: data, encoding: .utf8)
         else { return nil }
+        tightenAccessibility(service: service, account: cameraId)
         return secret
     }
 
