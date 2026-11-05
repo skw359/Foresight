@@ -1,5 +1,5 @@
 /**
- * Dedicated KDF Web Worker (E2EE_MODEL_B_PLAN.md §9.2).
+ * Dedicated KDF Web Worker (shared/E2EE.md §9.2).
  *
  * At memlimit=64 MiB the Argon2id WASM KDF takes ~0.5–2 s and BLOCKS its calling
  * thread, so vault CREATE (register / first-login) and vault UNLOCK both run

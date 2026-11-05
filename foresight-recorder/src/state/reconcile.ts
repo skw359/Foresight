@@ -9,7 +9,7 @@
  * silently stop recording.
  *
  * The reconcile response also carries per-Home E2EE key state (RecorderReconcile
- * Response.homeKeys — E2EE_MODEL_B_PLAN.md §8.2). It is the source of truth for
+ * Response.homeKeys — shared/E2EE.md §8.2). It is the source of truth for
  * keys: the KeyManager unseals + caches it here, and any rotation / revocation /
  * consent-grant it detects is applied to the live rooms via RoomManager.syncHome.
  */

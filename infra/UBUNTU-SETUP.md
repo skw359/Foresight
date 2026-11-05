@@ -72,15 +72,23 @@ cp infra/livekit.example.yaml      infra/livekit.yaml
 chmod 600 foresight-server/.env foresight-recorder/.env infra/livekit.yaml
 ```
 
-Then edit both. The values that matter on Linux:
+Then edit all three. **Generate every secret** — the server and recorder refuse
+to start on an empty, short or template value:
+
+```bash
+openssl rand -hex 32   # run once per secret
+```
 
 | Setting | Why |
 | --- | --- |
+| `JWT_SECRET` (server) | Signs session tokens. Anyone who knows it can sign in as any user. |
+| `LIVEKIT_API_KEY` / `_SECRET` (server, recorder, `infra/livekit.yaml` `keys:`) | The same generated pair in all three. With the public `devkey`/`secret` pair anyone could join any Home room, watch cameras and talk through them. |
+| `RECORDER_SHARED_SECRET` (server, recorder) | The same generated value in both. |
+| `SERVER_URL` (recorder) | `http://127.0.0.1:3198` — the server's loopback-only internal API (`INTERNAL_PORT`), not port 3199. |
 | `RECORDINGS_DIR` | Same **absolute** POSIX path in both files. A leftover `E:\...` resolves to a literal directory of that name under the project root. On this host it points at the 1TB HDD — see Gotchas. |
 | `LIVEKIT_PUBLIC_URL` | This host's LAN IP, not `localhost` — `localhost` is the *phone*. Get it with `hostname -I`. |
 | `PUBLIC_SERVER_URL` | Same scheme as `LIVEKIT_PUBLIC_URL` (see the mixed-content note in the server README). |
 | `FFMPEG_PATH` | Only needed where ffmpeg is not on PATH. |
-| `LIVEKIT_API_KEY` / `_SECRET` | Must match `infra/livekit.yaml`'s `keys:` block. |
 
 Both `LIVEKIT_PUBLIC_URL` and `PUBLIC_SERVER_URL` embed a **DHCP address**. If
 the lease changes, update them — or reserve the IP on the router.
@@ -88,10 +96,20 @@ the lease changes, update them — or reserve the IP on the router.
 Then set up the database and build:
 
 ```bash
-cd foresight-server && npm run prisma:generate && npm run prisma:migrate && cd ..
+cd foresight-server && npm run prisma:generate && npm run prisma:deploy && cd ..
 npm run build:web
 npm run build:recorder
 ```
+
+`prisma:deploy` (`prisma migrate deploy`) only applies pending migrations.
+Never use `prisma:migrate` (`migrate dev`) on a real database — on schema drift
+it offers to reset it. The systemd unit runs `migrate deploy` before every
+start, so after a `git pull` you only rebuild and restart.
+
+**The first account you register becomes the server administrator.** After
+that, registration is closed until the admin opens it (dashboard → Settings →
+General → *Allow new accounts*), or set `ALLOW_REGISTRATION=true` in
+`foresight-server/.env`. Register yourself right after the first start.
 
 ## 3. Run it
 
@@ -149,8 +167,29 @@ sudo ufw allow 3199,7880,7881/tcp
 sudo ufw allow 50000:50100/udp
 ```
 
-Port 3399 (the recorder's control API) binds loopback only and must **not** be
-opened.
+Ports 3399 (the recorder's control API) and 3198 (the server's internal API
+for the recorder) bind loopback only and must **not** be opened.
+
+## Backups
+
+`foresight-server/dev.db` holds every account, Home, camera and every user's
+E2EE key vault. Losing it locks everyone out of their encrypted Homes.
+
+`install-user-units.sh` installs `foresight-backup.timer`, which runs
+`node scripts/backup-db.mjs` daily: an online SQLite backup (safe while the
+server runs), integrity-checked, into `foresight-server/backups/` (override with
+`BACKUP_DIR`), keeping the newest 14 (`BACKUP_KEEP`). **Copy the backups off this
+machine too** (another disk, a NAS, cloud storage) — a dead SSD takes local
+backups with it.
+
+```bash
+systemctl --user list-timers foresight-backup.timer
+cd foresight-server && node scripts/backup-db.mjs     # on demand
+```
+
+To restore: stop `foresight-server`, copy a backup over the database file
+(delete any `dev.db-wal` / `dev.db-shm` next to it), start it again. The server
+runs SQLite in WAL mode.
 
 ## Gotchas
 
@@ -181,4 +220,9 @@ opened.
   server maps a segment's epoch to its `YYYY/MM/DD` bucket assuming that. Don't
   set `TZ` in the unit files.
 - **`dev.db` is portable.** SQLite files move between Windows and Linux as-is;
-  the database carried over from the previous host needs no conversion.
+  the database carried over from the previous host needs no conversion. After
+  upgrading, the oldest existing account is made server admin automatically.
+- **The phone's battery.** A camera phone sits on its charger 24/7: turn on
+  *Optimized Battery Charging* (or the 80 % limit on newer iPhones) to slow
+  battery wear, and keep it somewhere it can shed heat. The camera app already
+  steps quality down when the phone gets hot.

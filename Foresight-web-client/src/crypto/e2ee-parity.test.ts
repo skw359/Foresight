@@ -1,5 +1,5 @@
 /**
- * M0 cross-platform parity gate for the WASM build (E2EE_MODEL_B_PLAN.md §11).
+ * M0 cross-platform parity gate for the WASM build (shared/E2EE.md §11).
  *
  * Proves the web (libsodium-wrappers-sumo) crypto derives byte-identical values
  * to the shared cross-platform vector, and that livekit-client's internal

@@ -1,5 +1,5 @@
 /**
- * Recorder identity (E2EE_MODEL_B_PLAN.md §8.2 / §8.3).
+ * Recorder identity (shared/E2EE.md §8.2 / §8.3).
  *
  * The recorder is a single global consented key-holder. It owns one X25519
  * keypair; the SECRET KEY at rest IS the consent boundary (§8.3): anyone with

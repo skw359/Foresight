@@ -7,11 +7,18 @@
 #   see TLS-SETUP.md for: DNS, running as a service, and the DNS-01 cert path
 #
 # Requires: livekit.example.com DNS resolves to THIS machine, reachable on :443.
-# Only signaling rides this proxy; WebRTC media stays direct on
+# Only signaling rides this proxy (never LiveKit's /twirp server API); WebRTC media stays direct on
 # UDP 50000-50100 / TCP 7881 (already DTLS-encrypted) — keep those reachable.
 
+# Only the signaling socket (/rtc…) and the health check (/) are proxied.
+# LiveKit's Twirp server API (/twirp/…) is NOT exposed — only foresight-server
+# needs it, over the LAN/loopback.
 livekit.example.com {
-	reverse_proxy 127.0.0.1:7880
+	@livekit path / /rtc /rtc/*
+	handle @livekit {
+		reverse_proxy 127.0.0.1:7880
+	}
+	respond 404
 }
 
 # ---------------------------------------------------------------------------
@@ -25,7 +32,11 @@ livekit.example.com {
 # 	tls {
 # 		dns cloudflare {env.CF_API_TOKEN}
 # 	}
-# 	reverse_proxy 127.0.0.1:7880
+# 	@livekit path / /rtc /rtc/*
+# 	handle @livekit {
+# 		reverse_proxy 127.0.0.1:7880
+# 	}
+# 	respond 404
 # }
 #
 # DNS-01 needs a Caddy build that bundles your provider's plugin:

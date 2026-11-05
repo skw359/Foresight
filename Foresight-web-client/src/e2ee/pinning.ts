@@ -1,6 +1,6 @@
 /**
  * TOFU (trust-on-first-use) pubkey pinning — the v1 mitigation for key-directory
- * trust (E2EE_MODEL_B_PLAN.md §10.5).
+ * trust (shared/E2EE.md §10.5).
  *
  * A sealing client pins each holder's pubkey the first time it seals to it. If a
  * later reconcile/grant sees a DIFFERENT key for the same holder, we HARD-REFUSE

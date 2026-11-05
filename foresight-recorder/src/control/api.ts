@@ -7,7 +7,7 @@
  * server's calls are fire-and-forget with a short timeout, and arming may block
  * on a LiveKit connect we don't want the caller to wait for.
  *
- * The E2EE control pushes (E2EE_MODEL_B_PLAN.md §8.2) — /control/rekey and
+ * The E2EE control pushes (shared/E2EE.md §8.2) — /control/rekey and
  * /control/revoke — are best-effort nudges the server sends at consent
  * rotate/revoke. Both simply trigger an immediate reconcile (the periodic
  * reconcile remains the source of truth for keys), so the recorder reacts within
