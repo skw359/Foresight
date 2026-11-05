@@ -5,7 +5,9 @@
  * a fresh boot immediately re-arms whatever should be recording.
  */
 import type { RegisterRecorderIdentityRequest } from "@foresight/contract";
-import { config } from "./config.js";
+import { config, insecureWarnings } from "./config.js";
+import { probeFfmpeg } from "./media/ffmpeg.js";
+import { health } from "./state/health.js";
 import { log, isPretty } from "./log.js";
 import { banner } from "./console.js";
 import { RecorderIdentity } from "./crypto/identity.js";
@@ -94,8 +96,34 @@ function announceBoot(): void {
   );
 }
 
+/**
+ * Fail LOUDLY at boot when ffmpeg is missing or lacks the configured encoder —
+ * otherwise every encoder spawn fails and recording silently writes nothing.
+ * The recorder keeps running (the control API and reconcile stay up, and a
+ * fixed binary is picked up on the next spawn), but /status shows ffmpeg !ok.
+ */
+async function checkFfmpeg(): Promise<void> {
+  health.ffmpeg.path = config.ffmpegPath;
+  try {
+    health.ffmpeg.detail = await probeFfmpeg(config.ffmpegPath, config.encoder);
+    health.ffmpeg.ok = true;
+    log.info("ffmpeg ok", { ffmpeg: config.ffmpegPath, version: health.ffmpeg.detail, encoder: config.encoder });
+  } catch (err) {
+    health.ffmpeg.ok = false;
+    health.ffmpeg.detail = String(err);
+    log.error("ffmpeg is NOT usable — nothing will be recorded until this is fixed", {
+      ffmpeg: config.ffmpegPath,
+      encoder: config.encoder,
+      err: String(err),
+      hint: "install ffmpeg or set FFMPEG_PATH / ENCODER in foresight-recorder/.env",
+    });
+  }
+}
+
 async function main(): Promise<void> {
   announceBoot();
+  for (const warning of insecureWarnings) log.warn(`INSECURE (FORESIGHT_INSECURE_DEV=1): ${warning}`);
+  await checkFfmpeg();
 
   // E2EE identity (runs the crypto self-test) + key manager + room manager.
   const identity = RecorderIdentity.loadOrCreate(config.recorderKeyPath);

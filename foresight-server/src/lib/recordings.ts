@@ -20,6 +20,7 @@
  * container (sizes come from the index — no stats), and DEDUPES against any
  * loose crash leftovers of the same epochs, preferring the index entry.
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -623,16 +624,19 @@ async function rewriteDayFile(
   // index lied, since isDayIndex validated it on read).
   if (!isDayIndex(newIndex)) throw new Error(`rewritten day index invalid: ${indexPath}`);
 
-  const tmpTs = `${dayFilePath}.tmp`;
-  const tmpJson = `${indexPath}.tmp`;
-  const out = fs.createWriteStream(tmpTs);
+  // Unique, exclusive tmp names: two concurrent deletes touching the same day
+  // (or a recorder consolidation leftover) must never share a tmp file.
+  const tag = `${process.pid}-${randomUUID().slice(0, 8)}`;
+  const tmpTs = `${dayFilePath}.${tag}.tmp`;
+  const tmpJson = `${indexPath}.${tag}.tmp`;
+  const out = fs.createWriteStream(tmpTs, { flags: "wx" });
   try {
     await pipePieces(
       kept.map((s) => ({ path: dayFilePath, start: s.offset, end: s.offset + s.bytes - 1 })),
       out,
     );
     await finished(out); // fs streams resolve on 'close' — fd released before the swap
-    await fsp.writeFile(tmpJson, JSON.stringify(newIndex));
+    await fsp.writeFile(tmpJson, JSON.stringify(newIndex), { flag: "wx" });
   } catch (err) {
     out.destroy();
     await fsp.rm(tmpTs, { force: true }).catch(() => undefined);

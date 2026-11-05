@@ -17,6 +17,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config.js";
 import { log } from "../log.js";
+import { secretsEqual } from "../secrets.js";
+import { health } from "../state/health.js";
 import type { RoomManager } from "../livekit/roomManager.js";
 
 const controlBody = z.object({
@@ -42,7 +44,7 @@ export async function startControlApi(
 
   // Shared-secret guard on every route.
   app.addHook("preHandler", async (req, reply) => {
-    if (req.headers["x-recorder-secret"] !== config.sharedSecret) {
+    if (!secretsEqual(req.headers["x-recorder-secret"], config.sharedSecret)) {
       await reply.code(401).send({ error: "unauthorized", message: "Invalid recorder secret" });
     }
   });
@@ -90,7 +92,7 @@ export async function startControlApi(
 
   // /status reports per-camera state (recording | awaiting_consent | stalled |
   // revoked | …) plus a per-Home key summary (epoch / keyed / revoked).
-  app.get("/status", async () => ({ ok: true, ...rm.status() }));
+  app.get("/status", async () => ({ ok: health.ffmpeg.ok, ffmpeg: health.ffmpeg, ...rm.status() }));
 
   await app.listen({ port: config.port, host: "127.0.0.1" });
   log.info("control API listening", { host: "127.0.0.1", port: config.port });

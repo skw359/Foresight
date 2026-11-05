@@ -5,7 +5,7 @@
  *
  *         arm()
  *   IDLE ───────▶ AWAITING_TRACK ──onVideoTrack──▶ RECORDING
- *                      ▲                               │  │ frame → ffmpeg
+ *                      ▲                               │  │ frame → pacer → ffmpeg
  *      onTrackGone     │                               │  ▼ geometry change → restart ffmpeg
  *   (republish, blip)  └──────── REACQUIRING ◀─────────┘     (clean segment boundary)
  *                                   │ onVideoTrack
@@ -18,7 +18,27 @@
  * session" and the next TrackSubscribed means "resume into a fresh segment" —
  * never crash the session or corrupt a file.
  *
- * ── E2EE gate + watchdog states (E2EE_MODEL_B_PLAN.md §8.2) ──
+ * ── Timing (REC-02) ──
+ * ffmpeg's rawvideo input stamps frame N at N / fps, so every frame goes
+ * through a FramePacer that places it on the constant-rate timeline by its REAL
+ * timestamp (repeating the previous frame into empty slots, dropping extras).
+ * Media time tracks wall time whatever rate the camera, the network or the
+ * encoder delivers. A gap too long to fill, or an encoder that can't keep up,
+ * starts a fresh encoder (and, for the latter, a lower output frame rate).
+ *
+ * ── Respawn safety (REC-05) ──
+ * Segment names have one-second resolution and a new encoder names its first
+ * segment by its spawn second, so a new encoder may only start AFTER the
+ * previous one has fully exited and in a LATER wall-clock second — otherwise it
+ * would overwrite the previous encoder's last segment.
+ *
+ * ── Health (REC-04) ──
+ * Repeated unexpected encoder exits, or no finished segment for too long while
+ * frames are flowing, put the camera in ENCODER_FAILING (logged at error level
+ * and shown on /status + the dashboard) instead of silently reporting
+ * "recording".
+ *
+ * ── E2EE gate + watchdog states (shared/E2EE.md §8.2) ──
  * A Home the recorder holds no key for is held keyless — the RoomSession does
  * not even connect it, so it burns zero CPU:
  *   AWAITING_CONSENT — activated Home (epoch ≥ 1) with no HMK sealed to us.
@@ -30,12 +50,13 @@
  */
 import fs from "node:fs";
 import type { RemoteTrack } from "@livekit/rtc-node";
-import { buildHlsArgs, FfmpegProcess } from "../media/ffmpeg.js";
+import { buildHlsArgs, FfmpegProcess, type FfmpegExit } from "../media/ffmpeg.js";
 import {
   isLarger,
   resolveTargetGeometry,
   type Geometry,
 } from "../media/geometry.js";
+import { FramePacer } from "../media/pacer.js";
 import { pumpVideo } from "../media/videoPipe.js";
 import { cameraDir, livePlaylistPath, segmentTemplate } from "../storage/layout.js";
 import { config } from "../config.js";
@@ -49,17 +70,56 @@ export type RecorderState =
   | "stalled"
   | "awaiting_consent"
   | "revoked"
+  | "encoder_failing"
   | "stopped";
 
 /** Gate states set by the RoomSession when a Home has no usable key. */
 export type GateState = "awaiting_consent" | "revoked";
 
-/** Minimum gap between ffmpeg (re)spawn attempts, to avoid spawn storms. */
+/** The encoder surface CameraRecorder needs (FfmpegProcess; fakes in tests). */
+export interface Encoder {
+  start(): void;
+  write(buf: Uint8Array): boolean;
+  readonly writable: boolean;
+  readonly isClosed: boolean;
+  readonly exited: Promise<void>;
+  readonly exitedAt: number | null;
+  finalize(): Promise<void>;
+}
+
+export interface CameraRecorderDeps {
+  createEncoder?: (args: string[], log: Logger, onExit: (exit: FfmpegExit) => void) => Encoder;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  /** mtime (ms) of the live playlist ffmpeg rewrites after each segment, or null. */
+  playlistMtime?: () => number | null;
+}
+
+/** Minimum gap between ffmpeg (re)spawn attempts after a crash, to avoid spawn storms. */
 const SPAWN_BACKOFF_MS = 1000;
+/** Unexpected exits within this long of spawning count toward ENCODER_FAILING. */
+const QUICK_EXIT_MS = 30_000;
+/** Consecutive quick exits that mark the encoder as failing. */
+const FAILING_AFTER_EXITS = 3;
+/** Lowest output frame rate the overload back-off will step down to. */
+const MIN_FPS = 5;
+
+const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export class CameraRecorder {
   state: RecorderState = "idle";
-  private ffmpeg: FfmpegProcess | null = null;
+  private ffmpeg: Encoder | null = null;
+  /** The most recently retired/crashed encoder — the next spawn waits on it (REC-05). */
+  private previous: Encoder | null = null;
+  private spawnPending = false;
+  private spawnGeneration = 0;
+  private pacer: FramePacer | null = null;
+  /** Last frame written (or dropped by the pacer), repeated into empty slots. */
+  private lastFrame: Uint8Array | null = null;
+  /** Output frame rate of the live encoder; lowered when the host can't keep up. */
+  private outFps = config.fps;
+  /** Frames had to be skipped because the encoder's stdin was backpressured. */
+  private backpressured = false;
   /** Geometry of the frames the LIVE encoder was spawned for (its rawvideo -s). */
   private geometry: Geometry | null = null;
   /** Geometry the LIVE encoder is writing segments at (see media/geometry.ts). */
@@ -71,18 +131,45 @@ export class CameraRecorder {
   private pumpAbort: AbortController | null = null;
   private droppedFrames = 0;
   private writtenFrames = 0;
+  private repeatedFrames = 0;
   private lastSpawnAt = 0;
   private startedAt: number | null = null;
   private lastFrameAt = 0;
+  private lastSegmentAt: number | null = null;
+  private quickExits = 0;
+  private encoderSpawns = 0;
+  private lastProgressCheckAt = 0;
+  private lastEncoderError: string | null = null;
   private watchdog: NodeJS.Timeout | null = null;
   private readonly frameStallMs = Math.max(1000, config.frameStallSeconds * 1000);
+  /** No finished segment for this long while frames flow ⇒ the encoder is not writing. */
+  private readonly segmentStallMs = Math.max(20_000, config.segmentSeconds * 3_000 + 5_000);
   private readonly log: Logger;
+  private readonly createEncoder: NonNullable<CameraRecorderDeps["createEncoder"]>;
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly playlistMtime: () => number | null;
 
   constructor(
     private readonly homeId: string,
     private readonly cameraId: string,
+    deps: CameraRecorderDeps = {},
   ) {
     this.log = rootLog.child({ mod: "cameraRecorder", homeId, cameraId });
+    this.createEncoder =
+      deps.createEncoder ?? ((args, log, onExit) => new FfmpegProcess(config.ffmpegPath, args, log, onExit));
+    this.now = deps.now ?? Date.now;
+    this.sleep = deps.sleep ?? realSleep;
+    const playlist = livePlaylistPath(homeId, cameraId);
+    this.playlistMtime =
+      deps.playlistMtime ??
+      (() => {
+        try {
+          return fs.statSync(playlist).mtimeMs;
+        } catch {
+          return null;
+        }
+      });
   }
 
   /** Armed: room is connected, waiting for the camera's video track to arrive. */
@@ -129,13 +216,13 @@ export class CameraRecorder {
     this.pumpAbort?.abort();
     const abort = new AbortController();
     this.pumpAbort = abort;
-    this.state = "recording";
-    this.startedAt ??= Date.now();
-    this.lastFrameAt = Date.now();
+    if (this.state !== "encoder_failing") this.state = "recording";
+    this.startedAt ??= this.now();
+    this.lastFrameAt = this.now();
     this.startWatchdog();
     this.log.info("recording started/resumed");
 
-    void pumpVideo(track, (data, w, h) => this.sink(data, w, h), abort.signal, this.log).finally(
+    void pumpVideo(track, (data, w, h, ts) => this.sink(data, w, h, ts), abort.signal, this.log).finally(
       () => {
         // Pump ended: either the track went away or we aborted. If this was the
         // active pump (not superseded), drop to reacquiring and close the segment.
@@ -183,12 +270,14 @@ export class CameraRecorder {
   async stop(): Promise<void> {
     if (this.state === "stopped") return;
     this.state = "stopped";
+    this.spawnGeneration++; // cancel any pending spawn
     this.pumpAbort?.abort();
     this.pumpAbort = null;
     this.clearWatchdog();
     await this.finalizeFfmpeg();
     this.log.info("recording stopped", {
       written: this.writtenFrames,
+      repeated: this.repeatedFrames,
       dropped: this.droppedFrames,
     });
   }
@@ -203,18 +292,23 @@ export class CameraRecorder {
       geometry: this.geometry,
       target: this.target,
       declared: this.declared,
+      fps: this.outFps,
       writtenFrames: this.writtenFrames,
+      repeatedFrames: this.repeatedFrames,
       droppedFrames: this.droppedFrames,
+      encoderSpawns: this.encoderSpawns,
+      lastEncoderError: this.lastEncoderError,
+      lastSegmentAt: this.lastSegmentAt,
       startedAt: this.startedAt,
     };
   }
 
-  // --- frame sink: geometry handling + backpressure + crash respawn ---------
-  private sink(data: Uint8Array, w: number, h: number): void {
+  // --- frame sink: geometry handling, pacing, backpressure, respawn ---------
+  private sink(data: Uint8Array, w: number, h: number, tsUs: number): void {
     if (this.state === "stopped" || this.state === "awaiting_consent" || this.state === "revoked") {
       return;
     }
-    this.lastFrameAt = Date.now();
+    this.lastFrameAt = this.now();
     if (this.state === "stalled") {
       this.state = "recording";
       this.log.info("frames resumed after stall");
@@ -240,64 +334,209 @@ export class CameraRecorder {
       this.target?.h !== target.h;
 
     if (needSpawn) {
-      const now = Date.now();
-      // Crash respawn / geometry change. Throttle to avoid spawn storms when
-      // ffmpeg fails to start (e.g. bad path).
-      if (this.ffmpeg?.isClosed && now - this.lastSpawnAt < SPAWN_BACKOFF_MS) {
-        this.droppedFrames++;
-        return;
+      if (this.target && (this.target.w !== target.w || this.target.h !== target.h)) {
+        this.outFps = config.fps; // new resolution → retry the full frame rate
       }
-      this.spawnFfmpeg(w, h, target);
-    }
-
-    const ff = this.ffmpeg;
-    if (!ff || !ff.writable) {
-      // Backpressure (or transient): drop this frame rather than buffer unbounded.
+      this.requestSpawn(w, h, target, data);
       this.droppedFrames++;
       return;
     }
-    ff.write(data);
-    this.writtenFrames++;
+
+    const ff = this.ffmpeg!;
+    const pacer = this.pacer!;
+    const decision = pacer.push(tsUs);
+    if (decision.kind === "drop") {
+      this.lastFrame = data; // freshest image for the next repeated slot
+      return;
+    }
+    if (decision.kind === "resync") {
+      // A gap longer than we fill (frozen video, a stall shorter than the
+      // watchdog) or a clock jump: close this timeline cleanly and start a new
+      // encoder at this frame, rather than writing seconds of duplicate frames.
+      if (this.backpressured) this.lowerFrameRate(decision.missingSlots);
+      this.log.info("frame timeline resync — starting a new segment", {
+        reason: decision.reason,
+        missingSlots: decision.missingSlots,
+      });
+      this.retireEncoder();
+      this.requestSpawn(w, h, target, data);
+      return;
+    }
+
+    // Emit: repeated previous frame for each empty slot, then this frame. A
+    // backpressured encoder takes no more writes; whatever didn't fit stays
+    // OWED to the timeline (unemit), so the next frame fills it.
+    const writes = decision.repeatPrevious + 1;
+    let written = 0;
+    for (let i = 0; i < writes; i++) {
+      if (!ff.writable) break;
+      const frame = i < decision.repeatPrevious ? (this.lastFrame ?? data) : data;
+      ff.write(frame); // queued even when it returns false (backpressure)
+      written++;
+    }
+    if (written < writes) {
+      pacer.unemit(writes - written);
+      this.backpressured = true;
+      this.droppedFrames += writes - written;
+    } else {
+      this.backpressured = false;
+    }
+    if (written === writes) this.writtenFrames++;
+    this.repeatedFrames += Math.min(written, decision.repeatPrevious);
+    this.lastFrame = data;
+    this.checkSegmentProgress();
+  }
+
+  /** Persistent backpressure: the host can't encode this fast. Step the output rate down. */
+  private lowerFrameRate(missingSlots: number): void {
+    const next = Math.max(MIN_FPS, Math.floor((this.outFps * 2) / 3));
+    if (next === this.outFps) return;
+    this.log.warn("encoder can't keep up — lowering recording frame rate", {
+      from: this.outFps,
+      to: next,
+      missingSlots,
+      hint: "set RECORD_MAX_HEIGHT (e.g. 1080) or use a hardware ENCODER",
+    });
+    this.outFps = next;
+  }
+
+  /**
+   * Start a new encoder for frames of `w`x`h` — but only once the previous one
+   * has fully exited and the wall clock has moved past the second it exited
+   * in, so the new encoder's first segment can't take the name of (and
+   * overwrite) the previous encoder's last one (REC-05). Frames arriving
+   * meanwhile are dropped; `firstFrame` seeds the repeat buffer.
+   */
+  private requestSpawn(w: number, h: number, target: Geometry, firstFrame: Uint8Array): void {
+    this.lastFrame = firstFrame;
+    if (this.spawnPending) return;
+    this.spawnPending = true;
+    const generation = ++this.spawnGeneration;
+    void (async () => {
+      try {
+        if (this.ffmpeg && !this.ffmpeg.isClosed) this.retireEncoder();
+        const prev = this.previous;
+        if (prev) {
+          await prev.exited;
+          const exitedAt = prev.exitedAt ?? this.now();
+          const nextSecond = (Math.floor(exitedAt / 1000) + 1) * 1000;
+          const wait = nextSecond - this.now();
+          if (wait > 0) await this.sleep(wait);
+        }
+        // Crash loop guard: don't hammer a binary that dies on start.
+        const sinceLast = this.now() - this.lastSpawnAt;
+        if (this.quickExits > 0 && sinceLast < SPAWN_BACKOFF_MS) await this.sleep(SPAWN_BACKOFF_MS - sinceLast);
+      } finally {
+        this.spawnPending = false;
+      }
+      if (generation !== this.spawnGeneration) return; // superseded / stopped
+      if (this.state === "stopped" || this.state === "awaiting_consent" || this.state === "revoked") return;
+      if (this.state === "reacquiring" || this.state === "stalled") return; // the next frame respawns
+      this.spawnFfmpeg(w, h, target);
+    })();
   }
 
   private spawnFfmpeg(w: number, h: number, target: Geometry): void {
-    // Finalize the previous encoder (fire-and-forget) so its last segment closes;
-    // a fresh encoder starts a new segment at the new geometry — no corruption.
-    const previous = this.ffmpeg;
-    if (previous && !previous.isClosed) void previous.finalize();
-
     const args = buildHlsArgs({
       width: w,
       height: h,
       targetWidth: target.w,
       targetHeight: target.h,
-      fps: config.fps,
+      fps: this.outFps,
       encoder: config.encoder,
       segmentSeconds: config.segmentSeconds,
       segmentTemplate: segmentTemplate(this.homeId, this.cameraId),
       playlistPath: livePlaylistPath(this.homeId, this.cameraId),
     });
-    const ff = new FfmpegProcess(config.ffmpegPath, args, this.log);
+    const ff = this.createEncoder(args, this.log, (exit) => this.onEncoderExit(ff, exit));
     ff.start();
     this.ffmpeg = ff;
+    this.pacer = new FramePacer(this.outFps, Math.max(1, Math.round(this.outFps * 2)));
     this.geometry = { w, h };
     this.target = target;
-    this.lastSpawnAt = Date.now();
-    this.state = "recording";
+    this.lastSpawnAt = this.now();
+    this.encoderSpawns++;
+    if (this.state !== "encoder_failing") this.state = "recording";
     this.log.info("ffmpeg encoder started", {
       w,
       h,
       outW: target.w,
       outH: target.h,
+      fps: this.outFps,
       encoder: config.encoder,
     });
   }
 
-  private async finalizeFfmpeg(): Promise<void> {
+  /** Encoder exit bookkeeping: crash-loop detection → ENCODER_FAILING (REC-04). */
+  private onEncoderExit(ff: Encoder, exit: FfmpegExit): void {
+    if (this.ffmpeg === ff) {
+      this.ffmpeg = null;
+      this.previous = ff;
+    }
+    if (exit.requested || exit.code === 0) {
+      if (exit.ranMs >= QUICK_EXIT_MS) this.quickExits = 0;
+      return;
+    }
+    this.lastEncoderError = exit.stderrTail.slice(-3).join(" | ") || `exit ${exit.code ?? exit.signal}`;
+    this.quickExits = exit.ranMs < QUICK_EXIT_MS ? this.quickExits + 1 : 1;
+    if (this.quickExits >= FAILING_AFTER_EXITS && this.state !== "stopped" && this.state !== "encoder_failing") {
+      this.state = "encoder_failing";
+      this.log.error("encoder failing repeatedly — recording is NOT being written", {
+        exits: this.quickExits,
+        lastError: this.lastEncoderError,
+        ffmpeg: config.ffmpegPath,
+        encoder: config.encoder,
+      });
+    }
+  }
+
+  /**
+   * ffmpeg rewrites live.m3u8 each time it finishes a segment. Frames flowing
+   * but no finished segment for several segment lengths ⇒ the encoder is alive
+   * but not producing footage (full disk, wedged process).
+   */
+  private checkSegmentProgress(): void {
+    const t = this.now();
+    if (t - this.lastProgressCheckAt < 1000) return; // one stat per second is plenty
+    this.lastProgressCheckAt = t;
+    const mtime = this.playlistMtime();
+    if (mtime !== null && mtime >= this.lastSpawnAt) {
+      if (this.lastSegmentAt === null || mtime > this.lastSegmentAt) {
+        this.lastSegmentAt = mtime;
+        if (this.state === "encoder_failing") {
+          this.state = "recording";
+          this.quickExits = 0;
+          this.log.info("encoder recovered — segments are being written again");
+        }
+      }
+      return;
+    }
+    const since = this.now() - Math.max(this.lastSpawnAt, this.lastSegmentAt ?? 0);
+    if (this.ffmpeg && since > this.segmentStallMs && this.state === "recording") {
+      this.state = "encoder_failing";
+      this.log.error("no segment written while frames are flowing — check disk space and ffmpeg", {
+        sinceMs: since,
+        lastError: this.lastEncoderError,
+      });
+    }
+  }
+
+  /** Finalize the live encoder in the background; the next spawn waits for it. */
+  private retireEncoder(): void {
     const ff = this.ffmpeg;
     this.ffmpeg = null;
+    this.pacer = null;
     this.geometry = null;
     this.target = null;
+    if (ff) {
+      this.previous = ff;
+      void ff.finalize();
+    }
+  }
+
+  private async finalizeFfmpeg(): Promise<void> {
+    const ff = this.ffmpeg;
+    this.retireEncoder();
     if (ff) await ff.finalize();
   }
 
@@ -311,8 +550,8 @@ export class CameraRecorder {
     if (this.watchdog) return;
     const tick = (): void => {
       this.watchdog = null;
-      if (this.state !== "recording") return;
-      const idle = Date.now() - this.lastFrameAt;
+      if (this.state !== "recording" && this.state !== "encoder_failing") return;
+      const idle = this.now() - this.lastFrameAt;
       if (idle >= this.frameStallMs) {
         this.stall("no_frames");
         return;
@@ -333,12 +572,12 @@ export class CameraRecorder {
 
   /** Finalize the open segment and park in STALLED (recoverable on next frame). */
   private stall(reason: string): void {
-    if (this.state !== "recording") return;
+    if (this.state !== "recording" && this.state !== "encoder_failing") return;
     this.clearWatchdog();
     this.state = "stalled";
     this.log.warn("frame watchdog: stalled — finalizing open segment", {
       reason,
-      idleMs: Date.now() - this.lastFrameAt,
+      idleMs: this.now() - this.lastFrameAt,
     });
     void this.finalizeFfmpeg();
   }
