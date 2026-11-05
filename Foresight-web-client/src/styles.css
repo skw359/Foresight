@@ -215,18 +215,14 @@ button {
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
-/* Logo image fills the brand marks (topbar + login); the mark's rounded
-   box does the cornering, its accent background is the loading fallback. */
+/* Logo image fills the brand marks (topbar + login). The logo is a
+   transparent orange "F", so the mark has no background tile of its own. */
 .mark img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
+  object-fit: contain;
   display: block;
 }
 
@@ -437,9 +433,6 @@ button {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
-  background: var(--lp-primary);
-  color: #fff;
 }
 
 .login-screen .header-text h1 {
