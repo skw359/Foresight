@@ -6,10 +6,16 @@
 #   Windows  (livekit-server.exe on PATH):     .\infra\run-local.ps1
 #   Either, manually:                          livekit-server --config infra/livekit.yaml
 #
-# The simplest alternative needs no config at all: `livekit-server --dev`
-# (it uses the same devkey/secret pair below).
+# The backend and recorder mint tokens with the api key/secret listed under
+# `keys`. GENERATE YOUR OWN before first start — anyone who knows this pair can
+# join any Home room, watch every non-E2EE camera, talk through the cameras and
+# forge webhooks:
+#     openssl rand -hex 32        # → paste as the secret below
+# and use the same key/secret in foresight-server/.env and
+# foresight-recorder/.env (both refuse to start on a template or short secret).
 #
-# The backend mints tokens with the api key/secret listed under `keys`.
+# `livekit-server --dev` uses the public devkey/secret pair; it only works with
+# FORESIGHT_INSECURE_DEV=1 and must never face an untrusted network.
 
 port: 7880
 
@@ -32,10 +38,11 @@ rtc:
   # reverse proxy forwards to.
   # node_ip: "192.168.1.20"
 
-# Dev API key/secret. MUST match foresight-server's LIVEKIT_API_KEY / _SECRET.
-# Replace before any non-local deployment.
+# API key → secret. MUST match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in
+# foresight-server/.env and foresight-recorder/.env. Replace the placeholder
+# with `openssl rand -hex 32` (LiveKit itself requires ≥ 32 characters).
 keys:
-  devkey: secret
+  foresight: REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_32
 
 # Notify the backend when participants join/leave a room. This is what keeps the
 # server's camera.online / lastSeen accurate (see foresight-server webhooks.ts).
@@ -43,7 +50,7 @@ keys:
 #   the backend verifies the signature with LIVEKIT_API_KEY / LIVEKIT_API_SECRET.
 # - The server is co-located on this host, so delivery is over loopback.
 webhook:
-  api_key: devkey
+  api_key: foresight
   urls:
     - http://127.0.0.1:3199/webhooks/livekit
 

@@ -14,3 +14,10 @@ export function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   }
   return result.data;
 }
+
+/** Display names (Homes, cameras) end up in LiveKit tokens and every client's UI. */
+export const NAME_MAX = 64;
+/** Long enough for any email address; bounded so it can't bloat tokens/logs. */
+export const IDENTIFIER_MAX = 254;
+/** Bounded so a multi-megabyte "password" can't be used to burn argon2 time. */
+export const PASSWORD_MAX = 1024;

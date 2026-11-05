@@ -1,6 +1,6 @@
 /**
  * Per-Home key state derived from the recorder reconcile response
- * (E2EE_MODEL_B_PLAN.md §8.2). Each reconcile carries, for every relevant Home,
+ * (shared/E2EE.md §8.2). Each reconcile carries, for every relevant Home,
  * a { epoch, sealedHmk | null, revoked } tuple (RecorderHomeKeyInfo). This
  * module unseals the sealed HMK with the recorder identity, caches the result,
  * and classifies each change so the RoomManager can drive connect / live

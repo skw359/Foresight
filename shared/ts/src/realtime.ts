@@ -11,6 +11,11 @@
 
 import type { ParticipantRole, QualityPreset, ThermalState, WifiInfo } from "./rest.js";
 
+/*
+ * Receivers MUST validate every packet with decodeDataMessage (shape + `v`)
+ * and isAuthorizedSender (who may send it) before acting on it.
+ */
+
 /** Bump when the wire format changes incompatibly. */
 export const PROTOCOL_VERSION = 1;
 
@@ -158,14 +163,132 @@ export function encodeDataMessage(msg: DataMessage): Uint8Array {
   return encoder.encode(JSON.stringify(msg));
 }
 
-/** Decode bytes from a LiveKit data message; returns null if malformed. */
+const COMMAND_ACTIONS: ReadonlySet<string> = new Set<CommandAction>([
+  "torch",
+  "switchLens",
+  "setZoom",
+  "setQuality",
+  "snapshotHint",
+  "startRecord",
+  "stopRecord",
+  "talkStart",
+  "talkStop",
+  "alarm",
+]);
+const QUALITY_PRESETS: ReadonlySet<string> = new Set<QualityPreset>([
+  "auto",
+  "480p",
+  "1080p",
+  "max",
+  "pure4k",
+]);
+const THERMAL_STATES: ReadonlySet<string> = new Set<ThermalState>([
+  "nominal",
+  "fair",
+  "serious",
+  "critical",
+]);
+
+const isStr = (x: unknown): x is string => typeof x === "string" && x.length > 0 && x.length <= 256;
+const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const isBool = (x: unknown): x is boolean => typeof x === "boolean";
+const isNullable = <T>(x: unknown, check: (v: unknown) => v is T): boolean =>
+  x === null || x === undefined || check(x);
+
+function isWifi(x: unknown): x is WifiInfo {
+  if (typeof x !== "object" || x === null) return false;
+  const w = x as Record<string, unknown>;
+  return isNum(w.level) && (w.rssi === undefined || isNum(w.rssi)) && (w.ssid === undefined || typeof w.ssid === "string");
+}
+
+/**
+ * Structural validation of a decoded data message. Unknown types, missing or
+ * wrongly typed fields, and a protocol version other than PROTOCOL_VERSION are
+ * all rejected, so receivers never act on (or render) a half-formed payload.
+ */
+export function isDataMessage(x: unknown): x is DataMessage {
+  if (typeof x !== "object" || x === null) return false;
+  const m = x as Record<string, unknown>;
+  if (m.v !== PROTOCOL_VERSION) return false;
+  switch (m.type) {
+    case "command": {
+      if (!isStr(m.id) || !isStr(m.target) || !isStr(m.action) || !COMMAND_ACTIONS.has(m.action)) return false;
+      if (m.args === undefined || m.args === null) return true;
+      if (typeof m.args !== "object") return false;
+      const a = m.args as Record<string, unknown>;
+      return (
+        (a.on === undefined || isBool(a.on)) &&
+        (a.lens === undefined || isNum(a.lens)) &&
+        (a.zoom === undefined || isNum(a.zoom)) &&
+        (a.quality === undefined || (typeof a.quality === "string" && QUALITY_PRESETS.has(a.quality)))
+      );
+    }
+    case "ack":
+      return isStr(m.commandId) && isBool(m.ok) && (m.error === undefined || typeof m.error === "string");
+    case "state":
+      return (
+        isStr(m.cameraId) &&
+        isBool(m.torchOn) &&
+        isNum(m.lens) &&
+        isNum(m.zoom) &&
+        typeof m.quality === "string" &&
+        QUALITY_PRESETS.has(m.quality) &&
+        isBool(m.recording) &&
+        isBool(m.talking)
+      );
+    case "telemetry":
+      return (
+        isStr(m.cameraId) &&
+        isNullable(m.battery, isNum) &&
+        isNullable(m.charging, isBool) &&
+        isNullable(m.wifi, isWifi) &&
+        (m.thermal === null || m.thermal === undefined || (typeof m.thermal === "string" && THERMAL_STATES.has(m.thermal))) &&
+        isNum(m.viewerCount)
+      );
+    case "rekey":
+      return isNum(m.epoch) && Number.isInteger(m.epoch) && m.epoch >= 0;
+    default:
+      return false;
+  }
+}
+
+/** Decode bytes from a LiveKit data message; returns null if malformed, unknown, or another protocol version. */
 export function decodeDataMessage(bytes: Uint8Array): DataMessage | null {
   try {
-    const obj = JSON.parse(decoder.decode(bytes));
-    if (obj && typeof obj.type === "string") return obj as DataMessage;
-    return null;
+    const obj: unknown = JSON.parse(decoder.decode(bytes));
+    return isDataMessage(obj) ? obj : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Whether `senderIdentity` (the LiveKit participant identity that published
+ * the packet, or null/undefined for server-originated data) may send `msg`.
+ * Every receiver applies this before acting on a message:
+ *   - state / telemetry: only the camera the payload is ABOUT
+ *     (`camera:<msg.cameraId>`), so one participant cannot spoof another
+ *     camera's battery, torch or talk state;
+ *   - ack: only a camera (receivers additionally match it to the camera the
+ *     command was sent to);
+ *   - command: only a viewer (`user:…`) — never another camera and never
+ *     sender-less data, which LiveKit only produces for the server API;
+ *   - rekey: a viewer (the rotating owner's client) or the server itself.
+ */
+export function isAuthorizedSender(msg: DataMessage, senderIdentity: string | null | undefined): boolean {
+  const sender = senderIdentity ? parseIdentity(senderIdentity) : null;
+  switch (msg.type) {
+    case "state":
+    case "telemetry":
+      return sender?.role === "camera" && sender.id === msg.cameraId;
+    case "ack":
+      return sender?.role === "camera";
+    case "command":
+      return sender?.role === "viewer";
+    case "rekey":
+      return !senderIdentity || sender?.role === "viewer";
+    default:
+      return false;
   }
 }
 

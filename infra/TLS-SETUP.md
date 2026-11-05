@@ -17,6 +17,13 @@ Only **signaling** rides the proxy. WebRTC **media** stays direct: browser ⇄
 LiveKit host over UDP 50000–50100 / TCP 7881 (already DTLS-encrypted), so the
 viewer must be able to reach those ports directly.
 
+> **Before exposing anything:** make sure the LiveKit API key/secret in
+> `infra/livekit.yaml` (and both `.env` files) were generated with
+> `openssl rand -hex 32` — never the template or `devkey`/`secret`. The shipped
+> proxy configs forward only the signaling socket (`/rtc…`) and the health check;
+> LiveKit's server API (`/twirp/…`) stays private. If an older key ever faced
+> the internet, rotate it.
+
 ## On the proxy host
 
 ```bash
@@ -51,10 +58,11 @@ LIVEKIT_PUBLIC_URL=wss://livekit.example.com      # was ws://192.168.1.20:7880
 Restart the backend. No code change — the server already prefers
 `LIVEKIT_PUBLIC_URL` (confirmed in the compiled `dist/config.js`).
 
-Optional, for full TLS including iPhone pairing tickets:
-```
-PUBLIC_SERVER_URL=https://foresight.example.com   # was http://192.168.1.20:3199
-```
+For full TLS including iPhone pairing tickets, sign in as the server admin and
+set Settings → General → *Pairing server URL* to `https://foresight.example.com`
+(or set `PUBLIC_SERVER_URL` as the last-resort fallback). With the backend
+behind a reverse proxy, also set `TRUST_PROXY=true` in `foresight-server/.env`
+so rate limits see real client addresses.
 
 ## Verify
 ```

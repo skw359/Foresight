@@ -2,7 +2,7 @@
 //  CameraKeyManager.swift
 //  Foresight Camera Client
 //
-//  The camera's E2EE identity (E2EE_MODEL_B_PLAN.md §7.3). On-device X25519
+//  The camera's E2EE identity (shared/E2EE.md §7.3). On-device X25519
 //  keypair used to receive the Home Media Key (HMK): a logged-in member seals
 //  the HMK to this camera's public key, and only the private key here can
 //  unseal it (crypto_box_seal / crypto_box_seal_open, via swift-sodium).
@@ -151,8 +151,9 @@ enum CameraKeyManager {
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
         // Available after first unlock; survives reboots, fits an always-on camera
-        // that must stream unattended (plan §7.3).
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // that must stream unattended (plan §7.3) — but never leaves this device
+        // (excluded from backups), so a restored backup can't impersonate it.
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
     }
 
@@ -167,6 +168,7 @@ enum CameraKeyManager {
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data else { return nil }
+        KeychainStore.tightenAccessibility(service: keychainService, account: keychainAccount)
         return data
     }
 

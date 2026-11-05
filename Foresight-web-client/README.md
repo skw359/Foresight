@@ -25,13 +25,24 @@ npm run build      # typecheck + production build to dist/
 npm run preview    # serve the production build
 ```
 
-Configure the backend URL with `VITE_API_URL` (default `http://localhost:3199`)
-— copy `.env.example` to `.env` to change it. The LiveKit ws URL is **never**
-hardcoded; it always comes from the backend's `/rt/token` responses.
+The backend URL defaults to the **same origin** in a production build — the
+backend serves `dist/`, so every device that can open the dashboard reaches
+the API, and an HTTPS dashboard stays HTTPS. The Vite dev server defaults to
+port 3199 on whatever host you opened it on. Set `VITE_API_URL` (copy
+`.env.example` to `.env`) only when the API lives somewhere else. The LiveKit
+ws URL is **never** hardcoded; it always comes from the backend's `/rt/token`
+responses.
+
+The dashboard is served with a strict Content-Security-Policy (no inline or
+third-party scripts) and loads no third-party resources: the Montserrat font is
+self-hosted under `public/fonts/` (SIL OFL 1.1).
 
 ## Using it
 
 1. Register (single identifier field — email or username — + password, no rules).
+   The first account on a server becomes its **administrator**; after that,
+   registration is closed until the admin opens it (Settings → General → New
+   accounts).
 2. Create a **Home** (a group of cameras), open it.
 3. **Add Camera** → a QR code + pairing token appear. Either:
    - scan the QR with the iPhone **Camera Client**, or

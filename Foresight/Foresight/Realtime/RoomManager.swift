@@ -9,6 +9,12 @@
 //
 //  Grid tiles subscribe at the LOW simulcast layer; full-screen pins HIGH/MAX.
 //
+//  Every data packet is version-checked and its SENDER authorized
+//  (Foresight.isAuthorizedSender): a camera's state/telemetry is only accepted
+//  from that camera. A room that drops for good while it's on screen is
+//  reconnected with backoff; after an eviction (access removed / Home deleted)
+//  the token request answers 403/404 and the retries stop.
+//
 
 import Foundation
 import Combine
@@ -55,6 +61,12 @@ final class RoomManager: ObservableObject {
     private var currentEpoch = 0
     /// Retries the token fetch while we're activated but not yet keyed.
     private var keyRetryTask: Task<Void, Never>?
+
+    /// True while a screen wants this room connected (connect() … disconnect()).
+    private var wantsConnection = false
+    /// Pending automatic reconnect after a dropped room / failed connect.
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempt = 0
 
     /// Audio playback ("listen") toggle per camera id. When false we mute the
     /// remote audio track locally so the user doesn't hear that camera.
@@ -106,9 +118,16 @@ final class RoomManager: ObservableObject {
     // MARK: - Connection lifecycle
 
     func connect() async {
+        wantsConnection = true
         guard phase == .idle || phase == .disconnected || isFailed
                 || phase == .awaitingKey || phase == .locked else { return }
+        // NOTE: callers running INSIDE keyRetryTask / reconnectTask clear their
+        // handle first — cancelling the task we're running in would cancel the
+        // token request below (URLSession honours task cancellation).
         keyRetryTask?.cancel()
+        keyRetryTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
         phase = .connecting
         do {
             let rt = try await api.rtToken(homeId: homeId, role: .viewer)
@@ -153,20 +172,47 @@ final class RoomManager: ObservableObject {
             }
 
             phase = .connected
+            reconnectAttempt = 0
             reconcileParticipants()
         } catch {
             phase = .failed((error as? APIError)?.message ?? error.localizedDescription)
+            // Signed out, removed from the Home, or the Home is gone: retrying
+            // can't help. Anything else (server/LiveKit down) is retried.
+            let code = (error as? APIError)?.error
+            if code != "unauthorized" && code != "forbidden" && code != "not_found" {
+                scheduleReconnect()
+            }
         }
     }
 
     func disconnect() async {
+        wantsConnection = false
         keyRetryTask?.cancel()
         keyRetryTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
         listenEnabled.removeAll()
         for cam in camerasById.values { cam.e2eeDecrypting = false }
         await updateAudioEngine()
+        // Mark disconnected FIRST so the delegate doesn't read this intentional
+        // teardown as a dropped connection and schedule a reconnect.
+        phase = .disconnected
         await room.disconnect()
         phase = .disconnected
+    }
+
+    /// Reconnect after a drop with backoff (2 s doubling to 30 s) while a screen
+    /// still wants this room.
+    private func scheduleReconnect() {
+        guard wantsConnection, reconnectTask == nil else { return }
+        let delay = min(30.0, 2.0 * pow(2.0, Double(min(reconnectAttempt, 4))))
+        reconnectAttempt += 1
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.reconnectTask = nil   // see connect(): never cancel the running task
+            await self.connect()
+        }
     }
 
     private var isFailed: Bool { if case .failed = phase { return true }; return false }
@@ -208,6 +254,10 @@ final class RoomManager: ObservableObject {
         keyRetryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard let self, !Task.isCancelled else { return }
+            // Clear our own handle BEFORE connect(): it cancels keyRetryTask, and
+            // cancelling the task we're running in would abort its token fetch —
+            // the awaiting-key retry could then never succeed.
+            self.keyRetryTask = nil
             if self.phase == .awaitingKey { await self.connect() }
         }
     }
@@ -416,8 +466,12 @@ final class RoomManager: ObservableObject {
         cam.e2eeDecrypting = false
     }
 
-    private func handleData(_ data: Data) {
-        guard let message = ForesightCodec.decode(data) else { return }
+    private func handleData(_ data: Data, from sender: RemoteParticipant?) {
+        // Shape + protocol version (decode), then WHO may send it: only camera X
+        // reports camera X's state/telemetry; rekey comes from the server or a viewer.
+        guard let message = ForesightCodec.decode(data),
+              Foresight.isAuthorizedSender(message, senderIdentity: sender?.identity?.stringValue)
+        else { return }
         switch message {
         case .state(let s):
             camerasById[s.cameraId]?.apply(s)
@@ -442,7 +496,18 @@ final class RoomManager: ObservableObject {
     /// `epoch` 0 means the owner turned E2EE off. If the server confirms it,
     /// reconnect plaintext: frame encryption is fixed when the room connects.
     private func handleRekey(epoch: Int) async {
-        guard e2eeActive, epoch == 0 || epoch > currentEpoch else { return }
+        if !e2eeActive {
+            // Connected PLAINTEXT and the Home was just activated (the server
+            // broadcasts rekey on activation). Frame encryption is fixed per
+            // connection, so reconnect — connect() then sets up the key.
+            guard epoch >= 1, phase == .connected,
+                  let resp = try? await api.homeKey(homeId: homeId), resp.epoch >= 1,
+                  !e2eeActive, phase == .connected else { return }
+            await disconnect()
+            await connect()
+            return
+        }
+        guard epoch == 0 || epoch > currentEpoch else { return }
         do {
             let resp = try await api.homeKey(homeId: homeId)
             if resp.epoch == 0 {
@@ -507,7 +572,14 @@ extension RoomManager: RoomDelegate {
         Task { @MainActor in
             switch connectionState {
             case .connected: self.phase = .connected
-            case .disconnected: if self.phase == .connected { self.phase = .disconnected }
+            case .disconnected:
+                // A live room dropped (the SDK gave up resuming, server/LiveKit
+                // restart): reconnect on our own. disconnect() marks the phase
+                // first, so an intentional teardown never lands here.
+                if self.phase == .connected {
+                    self.phase = .disconnected
+                    self.scheduleReconnect()
+                }
             default: break
             }
         }
@@ -574,7 +646,7 @@ extension RoomManager: RoomDelegate {
     nonisolated func room(_ room: Room, participant: RemoteParticipant?,
                           didReceiveData data: Data, forTopic topic: String,
                           encryptionType: EncryptionType) {
-        Task { @MainActor in self.handleData(data) }
+        Task { @MainActor in self.handleData(data, from: participant) }
     }
 
     /// LiveKit frame-cryptor state per track. Surfaces "Decrypting…" instead of

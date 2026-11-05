@@ -1,6 +1,6 @@
 /**
  * E2EE wire validation — SHAPE AND SIZE ONLY. The server is zero-knowledge (see
- * E2EE_MODEL_B_PLAN.md §7.1): it stores and serves opaque base64 blobs and NEVER
+ * shared/E2EE.md §7.1): it stores and serves opaque base64 blobs and NEVER
  * seals, unseals, or derives anything. These zod schemas assert only that a
  * value is valid base64 decoding to the exact byte length the contract fixes for
  * each blob (public key 32 B, sealed key 80 B, wrapped private key 48 B, nonce
@@ -15,6 +15,7 @@ import {
   E2EE_WRAPPED_PRIVATE_KEY_BYTES,
   E2EE_X25519_KEY_BYTES,
   type EncryptedKeyVault,
+  type SetKeyVaultRequest,
 } from "@foresight/contract";
 
 /** Canonical base64 alphabet with 0–2 padding chars. */
@@ -49,11 +50,19 @@ export const kdfParamsSchema = z.object({
   saltB64: kdfSaltSchema,
 });
 
-export const encryptedKeyVaultSchema: z.ZodType<EncryptedKeyVault> = z.object({
+const vaultShape = {
   publicKey: publicKeySchema,
   wrappedPrivateKey: wrappedPrivateKeySchema,
   nonce: nonceSchema,
   kdf: kdfParamsSchema,
+};
+
+export const encryptedKeyVaultSchema: z.ZodType<EncryptedKeyVault> = z.object(vaultShape);
+
+/** POST /me/keys body: the vault plus (when replacing one) the account password. */
+export const setKeyVaultSchema: z.ZodType<SetKeyVaultRequest> = z.object({
+  ...vaultShape,
+  currentPassword: z.string().min(1).max(1024).optional(),
 });
 
 export const holderTypeSchema = z.enum(["user", "camera", "recorder"]);

@@ -7,7 +7,7 @@
  *   - Foresight Security Camera Client/Sources/Protocol/ForesightProtocol.swift
  *   - Foresight/Foresight/Models/ForesightProtocol.swift
  *
- * ── The locked LiveKit key-application contract (E2EE_MODEL_B_PLAN.md §3.2) ──
+ * ── The locked LiveKit key-application contract (shared/E2EE.md §3.2) ──
  * A divergence on ANY of these values produces SILENT decryption failure
  * (black video, no error). Do not change any of them without changing every
  * platform in the same release and re-running the M0 parity vector.
@@ -29,6 +29,23 @@
  * The server performs NO crypto with any of this: it stores/serves opaque
  * base64 blobs only. Sealing/unsealing/KDF happen exclusively on clients
  * (libsodium: libsodium-wrappers-sumo / swift-sodium / sodium-native).
+ *
+ * ── What E2EE does and does NOT protect against (read before relying on it) ──
+ * PROTECTS: media (video/audio frames) against the SFU operator (e.g. LiveKit
+ * Cloud) and anyone who obtains only the sealed-key blobs or the database's
+ * HomeKey table.
+ * DOES NOT PROTECT against a compromised or malicious Foresight server, nor
+ * against someone who can read the login traffic:
+ *   - the vault key is Argon2id(LOGIN PASSWORD), and the login password is sent
+ *     to the server at every login (in cleartext on a plain-HTTP LAN setup), so
+ *     whoever sees it can unwrap that user's vault;
+ *   - the server is the key directory: a malicious server can hand out its own
+ *     public key for a member/camera that a client has not pinned yet (TOFU
+ *     pins only catch a CHANGED key on a device that already pinned it);
+ *   - a database dump enables offline guessing of weak passwords against both
+ *     the login hash and the vault.
+ * Use TLS for the API, strong passwords, and compare key fingerprints out of
+ * band when it matters. See shared/E2EE.md for the full model.
  */
 
 /* ------------------------------------------------- LiveKit locked constants */
@@ -101,8 +118,10 @@ export interface KdfParams {
 
 /**
  * A user's identity keypair at rest: X25519 public key in the clear, private
- * key wrapped under Argon2id(password) via crypto_secretbox_easy. The server
- * stores this blob verbatim and can never open it.
+ * key wrapped under Argon2id(login password) via crypto_secretbox_easy. The
+ * server stores this blob verbatim and does no crypto with it — but because it
+ * also receives the login password at sign-in, it is NOT a party the vault is
+ * hidden from (see the threat-model note at the top of this file).
  */
 export interface EncryptedKeyVault {
   /** base64 X25519 public key (32 B). */
@@ -127,14 +146,15 @@ export interface SealedKey {
 
 /* ----------------------------------------------------- REST request/response
  * Route map (all session-authed unless noted):
- *   POST /me/keys                     body: EncryptedKeyVault        → 204
+ *   POST /me/keys                     body: SetKeyVaultRequest       → 204 (409 vault_exists when replacing a DIFFERENT existing vault without a correct currentPassword)
  *   GET  /me/keys                     → MeKeysResponse
  *   GET  /homes/:homeId/key           → HomeKeyResponse   (caller's own sealed copy)
  *   GET  /homes/:homeId/key/pending   → PendingKeyHoldersResponse
+ *   GET  /homes/:homeId/key/holders   → PendingKeyHoldersResponse (owner; EVERY holder the next epoch must be sealed to — members/cameras with pubkeys + the recorder while consented)
  *   POST /homes/:homeId/key           body: SubmitSealedKeysRequest  → 204 (idempotent; §10.5 authority — first-contact user/recorder seals are owner-only, 403 otherwise)
  *   DELETE /homes/:homeId/key/:holderType/:holderId → 204 (owner; drops the holder's CURRENT-epoch sealed copy so it returns to pending — repair path for a poisoned/undecryptable copy)
  *   POST /homes/:homeId/key/init      body: InitHomeKeyRequest       → HomeKeyEpochResponse (owner; 409 until every camera has a pubkey)
- *   POST /homes/:homeId/key/rotate    body: RotateHomeKeyRequest     → HomeKeyEpochResponse (owner; 409 on stale fromEpoch)
+ *   POST /homes/:homeId/key/rotate    body: RotateHomeKeyRequest     → HomeKeyEpochResponse (owner; 409 stale_epoch on stale fromEpoch; 409 recorder_key_required when consent is in force but the recorder's copy is missing; the server broadcasts `rekey`)
  *   POST /homes/:homeId/key/disable   → HomeKeyEpochResponse (owner; turns E2EE off — keyEpoch → 0, every sealed copy dropped, `rekey` epoch 0 broadcast; 409 when not activated)
  *   POST /homes/:homeId/recorder-consent body: RecorderConsentRequest → RecorderConsentResponse (owner)
  *   GET  /e2ee/recorder-identity      → RecorderIdentityResponse
@@ -143,6 +163,16 @@ export interface SealedKey {
  *   POST /internal/recorder-identity  body: RegisterRecorderIdentityRequest → 204
  *   GET  /internal/recording-cameras  → RecorderReconcileResponse (extended)
  */
+
+/**
+ * Body of POST /me/keys. Creating the first vault needs only the session.
+ * REPLACING an existing, different vault also requires the account password
+ * (`currentPassword`) so a stolen session token alone cannot swap in an
+ * attacker's public key. Re-posting the identical vault is an idempotent 204.
+ */
+export interface SetKeyVaultRequest extends EncryptedKeyVault {
+  currentPassword?: string;
+}
 
 /** Response to GET /me/keys. `keyVault: null` ⇒ run first-login key generation. */
 export interface MeKeysResponse {
@@ -286,7 +316,12 @@ export interface RecorderHomeKeyInfo {
   epoch: number;
   /** base64 HMK sealed to the recorder's pubkey at `epoch`, or null (no consent → awaiting_consent). */
   sealedHmk: string | null;
-  /** True when consent was explicitly revoked (stop + finalize, don't just wait). */
+  /**
+   * True ONLY when the owner explicitly revoked recorder consent (stop +
+   * finalize, don't just wait). "Never consented" and "consented, but the
+   * post-rotation copy is not sealed yet" both report `revoked: false` with
+   * `sealedHmk: null` (awaiting_consent).
+   */
   revoked: boolean;
 }
 

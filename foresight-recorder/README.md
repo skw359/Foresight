@@ -11,7 +11,7 @@ LiveKit webhook and serves the segments back to the dashboard.
  (camera:<id>)     home:<homeId>          • hidden rtc-node subscriber
                        ▲                   • per-camera ffmpeg → HLS segments
        webhook         │ arm/disarm        • writes RECORDINGS_DIR/<home>/<cam>/...
- foresight-server ─────┘ (loopback control API + /internal reconcile)
+ foresight-server ─────┘ (loopback control API :3399 + internal reconcile API :3198)
 ```
 
 ## Run (dev)
@@ -24,11 +24,17 @@ LiveKit webhook and serves the segments back to the dashboard.
    on PATH.
 3. `cp .env.example .env` (Windows: `copy .env.example .env`) and set
    `RECORDER_SHARED_SECRET` (must match the server's), `RECORDINGS_DIR` (same
-   absolute path as the server's), and the `LIVEKIT_*` values.
+   absolute path as the server's), and the `LIVEKIT_*` values. Secrets must be
+   generated (`openssl rand -hex 32`): the recorder refuses to start on the
+   template values. `SERVER_URL` points at the server's **internal** listener
+   (`http://127.0.0.1:3198`, the server's `INTERNAL_PORT`), not port 3199.
 4. From the repo root: `npm run dev:recorder` (or `npm run dev` in this package).
 
 Hit `http://127.0.0.1:3399/status` with the `x-recorder-secret` header to see
-armed cameras.
+armed cameras, each camera's state (`recording`, `reacquiring`, `stalled`,
+`encoder_failing`, …), when it last finished a segment (`lastSegmentAt`) and
+whether ffmpeg passed its boot check. The dashboard shows the same per-camera
+health through the server.
 
 ### Console output
 
@@ -48,8 +54,18 @@ unaffected. The same renderer backs `foresight-server`.
 ## How it behaves
 
 - **Arming** is driven by the server webhook (camera joins + `recordingEnabled`)
-  and by a periodic **reconcile** against the server's `/internal` API, so a
+  and by a periodic **reconcile** against the server's internal API, so a
   dropped webhook can never silently stop recording.
+- **Self-healing rooms**: if a Home's LiveKit room drops for good (LiveKit
+  restart, long network partition), the recorder reconnects with capped
+  exponential backoff (1 s → 30 s), and every reconcile pass also reconnects any
+  armed Home whose room is down — no webhook needed.
+- **Timing**: frames are paced onto the `RECORD_FPS` timeline by their real
+  timestamps (`src/media/pacer.ts`), repeating frames when the camera sends
+  fewer (its 20 fps 480p preset, congestion) and dropping extras. Footage plays
+  at true speed and segment durations match their wall-clock names. A new
+  encoder only starts after the previous one has exited and in a later
+  wall-clock second, so segment names never collide.
 - **Track churn is normal**: the iOS app unpublishes/republishes its video track
   on every quality change. The recorder treats that as pause → resume into a
   fresh segment, never a crash or corrupt file.
@@ -62,18 +78,29 @@ unaffected. The same renderer backs `foresight-server`.
   That is what keeps the tree remuxable — an MP4 track declares a single
   resolution, so a `clip.mp4` export of mixed-geometry segments would inherit the
   first segment's size for the whole download.
-- **Backpressure**: if `ffmpeg` can't keep up, the oldest frames are dropped
-  rather than buffered unbounded (recording must never OOM the box).
+- **Backpressure**: if `ffmpeg` can't keep up, frames are dropped rather than
+  buffered unbounded (recording must never OOM the box) — and the timeline stays
+  correct. Sustained overload steps that camera's output frame rate down and
+  logs a warning (set `RECORD_MAX_HEIGHT` or a hardware `ENCODER`).
+- **Failures are loud**: an ffmpeg that exits unexpectedly is logged at error
+  level with its last stderr lines; repeated quick exits, or frames flowing with
+  no finished segment, put the camera in `encoder_failing`. ffmpeg and the
+  configured encoder are checked at boot.
 - **Retention** prunes by age (`RETENTION_DAYS`) and by disk budget
-  (`RETENTION_MAX_GB` / `MIN_FREE_GB`), whichever bites first.
+  (`RETENTION_MAX_GB` / `MIN_FREE_GB`), whichever bites first. Disk-pressure
+  pruning is fair-share by default (`RETENTION_POLICY=fair`: the camera using
+  the most space loses its oldest footage first). Abandoned `*.tmp` files older
+  than a day are removed.
 - **Consolidation**: once a UTC day has fully elapsed (and its newest segment is
   over an hour old), that day's `seg_*.ts` files are concatenated per camera
   into a single `day_<YYYYMMDD>.ts` plus a `day_<YYYYMMDD>.json` byte index in
   the same `<home>/<cam>/YYYY/MM/DD` bucket, and the originals are deleted. The
   server plays byte ranges straight out of the day file (HLS v4
   `EXT-X-BYTERANGE`); retention treats each day file as one unit that expires
-  only when the entire day ages out. Controlled by `CONSOLIDATE_ENABLED`
-  (default on) and `CONSOLIDATE_INTERVAL_MS` (default hourly).
+  only when the entire day ages out. Passes never overlap, each build writes a
+  uniquely named temp file, and a day is skipped (with a warning) when the
+  volume lacks room for a full copy of it plus `MIN_FREE_GB`. Controlled by
+  `CONSOLIDATE_ENABLED` (default on) and `CONSOLIDATE_INTERVAL_MS` (default hourly).
 
 ## Known limitations (by design / preview SDK)
 

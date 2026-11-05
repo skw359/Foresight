@@ -7,7 +7,7 @@
  * server's calls are fire-and-forget with a short timeout, and arming may block
  * on a LiveKit connect we don't want the caller to wait for.
  *
- * The E2EE control pushes (E2EE_MODEL_B_PLAN.md §8.2) — /control/rekey and
+ * The E2EE control pushes (shared/E2EE.md §8.2) — /control/rekey and
  * /control/revoke — are best-effort nudges the server sends at consent
  * rotate/revoke. Both simply trigger an immediate reconcile (the periodic
  * reconcile remains the source of truth for keys), so the recorder reacts within
@@ -17,6 +17,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config.js";
 import { log } from "../log.js";
+import { secretsEqual } from "../secrets.js";
+import { health } from "../state/health.js";
 import type { RoomManager } from "../livekit/roomManager.js";
 
 const controlBody = z.object({
@@ -42,7 +44,7 @@ export async function startControlApi(
 
   // Shared-secret guard on every route.
   app.addHook("preHandler", async (req, reply) => {
-    if (req.headers["x-recorder-secret"] !== config.sharedSecret) {
+    if (!secretsEqual(req.headers["x-recorder-secret"], config.sharedSecret)) {
       await reply.code(401).send({ error: "unauthorized", message: "Invalid recorder secret" });
     }
   });
@@ -90,7 +92,7 @@ export async function startControlApi(
 
   // /status reports per-camera state (recording | awaiting_consent | stalled |
   // revoked | …) plus a per-Home key summary (epoch / keyed / revoked).
-  app.get("/status", async () => ({ ok: true, ...rm.status() }));
+  app.get("/status", async () => ({ ok: health.ffmpeg.ok, ffmpeg: health.ffmpeg, ...rm.status() }));
 
   await app.listen({ port: config.port, host: "127.0.0.1" });
   log.info("control API listening", { host: "127.0.0.1", port: config.port });

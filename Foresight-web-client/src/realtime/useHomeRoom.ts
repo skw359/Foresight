@@ -13,11 +13,18 @@
  *    correlate `ack`s.
  *
  * Commands ride the reliable DATA channel — never the media stream.
+ *
+ * Every received packet is schema/version-checked (decodeDataMessage) and its
+ * SENDER is authorized (isAuthorizedSender): a camera's state/telemetry is only
+ * accepted from that camera, acks only from the camera the command went to, so
+ * one participant can't spoof another camera's battery/torch state or invent
+ * phantom tiles. A dropped room reconnects on its own with backoff.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConnectionState,
   DataPacket_Kind,
+  DisconnectReason,
   ExternalE2EEKeyProvider,
   isE2EESupported,
   Participant,
@@ -34,6 +41,7 @@ import {
   cameraIdentity,
   decodeDataMessage,
   encodeDataMessage,
+  isAuthorizedSender,
   makeCommand,
   makeRekey,
   parseIdentity,
@@ -43,7 +51,7 @@ import {
   type DataMessage,
 } from "@foresight/contract";
 
-import { getHomeKey, rtToken } from "../api/client";
+import { ApiRequestError, getHomeKey, rtToken } from "../api/client";
 import { useE2EE } from "../e2ee/E2EEContext";
 import { reconcileBackfill } from "../e2ee/operations";
 import { initialLiveCamera, type LiveCamera } from "./types";
@@ -75,6 +83,8 @@ export interface RoomE2EEState {
 export interface SendCommandResult {
   ok: boolean;
   error?: string;
+  /** No ack arrived in time: the camera may not have received the command. */
+  unconfirmed?: boolean;
 }
 
 export interface HomeRoomApi {
@@ -88,9 +98,9 @@ export interface HomeRoomApi {
   /** Ordered list for rendering (stable by id). */
   cameraList: LiveCamera[];
   /**
-   * Send a command to a camera over the data channel and await its ack.
-   * Resolves immediately (ok:true) if no ack arrives within the timeout — the
-   * camera may not implement acks, and commands are best-effort/advisory.
+   * Send a command to a camera over the data channel and await its ack. If no
+   * ack arrives within the timeout the result is `ok: false, unconfirmed: true`
+   * — cameras ack every command, so silence means it may never have arrived.
    */
   sendCommand: (
     cameraId: string,
@@ -108,6 +118,23 @@ export interface HomeRoomApi {
 }
 
 const ACK_TIMEOUT_MS = 4000;
+
+/** Auto-reconnect backoff after a dropped room: 2 s doubling to 30 s. */
+const RETRY_BASE_MS = 2000;
+const RETRY_MAX_MS = 30_000;
+
+/** Disconnect reasons that must NOT trigger an automatic reconnect. */
+const TERMINAL_DISCONNECTS = new Set<DisconnectReason | undefined>([
+  DisconnectReason.CLIENT_INITIATED,
+  DisconnectReason.PARTICIPANT_REMOVED, // evicted: removed from the Home
+  DisconnectReason.ROOM_DELETED, // the Home was deleted
+]);
+
+interface PendingAck {
+  /** The camera the command was addressed to — only its ack counts. */
+  cameraId: string;
+  resolve: (r: SendCommandResult) => void;
+}
 
 /**
  * @param homeId    the Home to join (room = home:<homeId>)
@@ -138,14 +165,32 @@ export function useHomeRoom(
   e2eeRef.current = e2eeApi;
 
   // Pending ack resolvers keyed by command id.
-  const pendingAcks = useRef<Map<string, (r: SendCommandResult) => void>>(
-    new Map(),
-  );
+  const pendingAcks = useRef<Map<string, PendingAck>>(new Map());
+  // Consecutive failed (re)connects, for the auto-reconnect backoff.
+  const retryAttempt = useRef(0);
 
   // Keep the latest DTOs in a ref so the connect effect doesn't reconnect when
   // they refresh; we merge them into live state separately.
   const dtoRef = useRef<CameraDTO[]>(cameraDtos);
   dtoRef.current = cameraDtos;
+
+  /**
+   * Apply a functional update to a camera we ALREADY know (from the REST list
+   * or a connected camera participant). Data messages use this, so a payload
+   * naming an unknown id can never create a phantom tile.
+   */
+  const patchKnownCamera = useCallback(
+    (id: string, fn: (c: LiveCamera) => LiveCamera) => {
+      setCameras((prev) => {
+        const existing = prev.get(id);
+        if (!existing) return prev;
+        const next = new Map(prev);
+        next.set(id, fn(existing));
+        return next;
+      });
+    },
+    [],
+  );
 
   /** Apply a functional update to one camera (creating it if needed). */
   const patchCamera = useCallback(
@@ -197,6 +242,20 @@ export function useHomeRoom(
     let cancelled = false;
     let lkRoom: Room | null = null;
     let e2eeWorker: Worker | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /** Reconnect on our own after a drop/failure, with capped backoff. */
+    function scheduleRetry(why: string) {
+      if (cancelled || retryTimer) return;
+      const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** retryAttempt.current);
+      retryAttempt.current += 1;
+      setStatus("reconnecting");
+      setError(`${why} — reconnecting in ${Math.round(delay / 1000)}s…`);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (!cancelled) setReconnectNonce((n) => n + 1);
+      }, delay);
+    }
 
     function cameraIdOf(p: Participant): string | null {
       const parsed = parseIdentity(p.identity);
@@ -206,13 +265,15 @@ export function useHomeRoom(
     function handleData(payload: Uint8Array, participant?: RemoteParticipant): void {
       const msg = decodeDataMessage(payload);
       if (!msg) return;
+      // Who sent it matters: only camera X may report camera X's state.
+      if (!isAuthorizedSender(msg, participant?.identity)) return;
       applyMessage(msg, participant);
     }
 
     function applyMessage(msg: DataMessage, participant?: RemoteParticipant) {
       switch (msg.type) {
         case "state":
-          patchCamera(msg.cameraId, (c) => ({
+          patchKnownCamera(msg.cameraId, (c) => ({
             ...c,
             torchOn: msg.torchOn,
             lens: msg.lens,
@@ -223,7 +284,7 @@ export function useHomeRoom(
           }));
           break;
         case "telemetry":
-          patchCamera(msg.cameraId, (c) => ({
+          patchKnownCamera(msg.cameraId, (c) => ({
             ...c,
             battery: msg.battery,
             charging: msg.charging,
@@ -233,10 +294,12 @@ export function useHomeRoom(
           }));
           break;
         case "ack": {
-          const resolve = pendingAcks.current.get(msg.commandId);
-          if (resolve) {
+          const pending = pendingAcks.current.get(msg.commandId);
+          // Only the camera the command was sent to can resolve it.
+          const from = participant ? parseIdentity(participant.identity) : null;
+          if (pending && from?.role === "camera" && from.id === pending.cameraId) {
             pendingAcks.current.delete(msg.commandId);
-            resolve({ ok: msg.ok, error: msg.error });
+            pending.resolve({ ok: msg.ok, error: msg.error });
           }
           break;
         }
@@ -255,10 +318,17 @@ export function useHomeRoom(
 
     async function handleRekey() {
       const provider = keyProviderRef.current;
-      if (!provider || !homeId) return;
+      if (!homeId) return;
       try {
         const resp = await getHomeKey(homeId);
         if (cancelled) return;
+        if (!provider) {
+          // Connected PLAINTEXT and the Home was just activated: frame
+          // encryption is fixed per connection, so reconnect with a key
+          // provider (otherwise this tab keeps a plaintext session forever).
+          if (resp.epoch >= 1) setReconnectNonce((n) => n + 1);
+          return;
+        }
         if (resp.epoch === 0) {
           // E2EE was turned off. Frame encryption is fixed per connection, so
           // rebuild the room plaintext instead of re-keying it.
@@ -433,8 +503,25 @@ export function useHomeRoom(
           .on(RoomEvent.ParticipantEncryptionStatusChanged, handleEncryptionStatus)
           .on(RoomEvent.Reconnecting, () => !cancelled && setStatus("reconnecting"))
           .on(RoomEvent.Reconnected, () => !cancelled && setStatus("connected"))
-          .on(RoomEvent.Disconnected, () => {
-            if (!cancelled) setStatus("disconnected");
+          .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+            if (cancelled) return;
+            if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+              setStatus("disconnected");
+              setError("You were disconnected from this Home (access removed).");
+              return;
+            }
+            if (reason === DisconnectReason.ROOM_DELETED) {
+              setStatus("disconnected");
+              setError("This Home was deleted.");
+              return;
+            }
+            if (TERMINAL_DISCONNECTS.has(reason)) {
+              setStatus("disconnected");
+              return;
+            }
+            // The SDK gave up resuming (server restart, long network loss):
+            // rebuild the connection ourselves rather than staying dark.
+            scheduleRetry("Connection lost");
           })
           .on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
             if (cancelled) return;
@@ -452,6 +539,8 @@ export function useHomeRoom(
         roomRef.current = lkRoom;
         setRoom(lkRoom);
         setStatus("connected");
+        setError(null);
+        retryAttempt.current = 0;
         setE2EE({ status: epoch >= 1 ? e2eeStatus : "off", epoch });
 
         // Seed from participants already in the room.
@@ -467,6 +556,12 @@ export function useHomeRoom(
         if (epoch >= 1) void afterConnect(epoch, hmkBase64);
       } catch (err) {
         if (cancelled) return;
+        // Not allowed in (signed out, removed, Home gone): retrying can't help.
+        const fatal = err instanceof ApiRequestError && [401, 403, 404].includes(err.status);
+        if (!fatal) {
+          scheduleRetry(err instanceof Error ? err.message : "Failed to connect");
+          return;
+        }
         setStatus("error");
         setError(err instanceof Error ? err.message : "Failed to connect to the room.");
       }
@@ -475,6 +570,7 @@ export function useHomeRoom(
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       const room = lkRoom;
       if (room) {
         room.removeAllListeners();
@@ -489,12 +585,12 @@ export function useHomeRoom(
       }
       keyProviderRef.current = null;
       // Fail any in-flight commands.
-      for (const [, resolve] of pendingAcks.current) {
-        resolve({ ok: false, error: "Disconnected" });
+      for (const [, pending] of pendingAcks.current) {
+        pending.resolve({ ok: false, error: "Disconnected" });
       }
       pendingAcks.current.clear();
     };
-  }, [homeId, enabled, patchCamera, reconnectNonce]);
+  }, [homeId, enabled, patchCamera, patchKnownCamera, reconnectNonce]);
 
   /* ---- send a command over the data channel ---- */
   const sendCommand = useCallback(
@@ -511,11 +607,11 @@ export function useHomeRoom(
       const targetIdentity = cameraIdentity(cameraId);
 
       const ackPromise = new Promise<SendCommandResult>((resolve) => {
-        pendingAcks.current.set(cmd.id, resolve);
+        pendingAcks.current.set(cmd.id, { cameraId, resolve });
         setTimeout(() => {
           if (pendingAcks.current.delete(cmd.id)) {
-            // No ack — treat as best-effort success (advisory commands).
-            resolve({ ok: true });
+            // Cameras ack every command: silence is NOT success.
+            resolve({ ok: false, unconfirmed: true, error: "the camera didn't confirm (it may be offline)" });
           }
         }, ACK_TIMEOUT_MS);
       });

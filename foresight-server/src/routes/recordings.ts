@@ -9,6 +9,10 @@
  *   GET /recordings/:cameraId/playlist.m3u8?...       → generated HLS playlist
  *   GET /recordings/:cameraId/seg/:name               → one segment OR day file (.ts)
  *   GET /recordings/:cameraId/clip.mp4?from&to        → remuxed range download
+ *   POST /recordings/:cameraId/clip-url?from&to       → short-lived signed clip URL
+ *
+ * Deleting footage is owner-only and audited. Clip exports are capped in length
+ * (CLIP_MAX_SECONDS) and concurrency (CLIP_MAX_CONCURRENT / CLIP_MAX_PER_USER).
  *
  * Playback in the web client uses hls.js; it attaches the bearer token via
  * xhrSetup, so the same guard protects the playlist AND every segment it lists.
@@ -23,21 +27,28 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import type { FastifyInstance } from "fastify";
+import { PassThrough } from "node:stream";
+import jwt from "jsonwebtoken";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   DEFAULT_SEGMENT_SECONDS,
   coverageSpans,
   parseDayFileName,
   parseSegmentName,
   renderPlaylist,
+  utcDayStamp,
+  type ClipUrlResponse,
   type DeleteRecordingsResponse,
   type RecordingCoverage,
+  type SegmentRef,
 } from "@foresight/contract";
 import { config } from "../config.js";
 import { requireUser } from "../auth.js";
+import { prisma } from "../db.js";
 import { clipMuxArgs, planClipEncode } from "../lib/clipGeometry.js";
-import { badRequest, notFound } from "../lib/errors.js";
-import { requireCameraAccess } from "../lib/membership.js";
+import { HttpError, badRequest, notFound, unauthorized } from "../lib/errors.js";
+import { requireCameraAccess, requireCameraOwner } from "../lib/membership.js";
+import { audit, userActor } from "../lib/audit.js";
 import {
   cameraDir,
   deleteSegments,
@@ -65,6 +76,107 @@ function iso(epochSeconds: number): string {
 
 /** Segments returned for a rolling live playlist window. ~6 × 6s ≈ 36s tail. */
 const LIVE_WINDOW_SEGMENTS = 6;
+
+/** Media-sequence numbers reserved per UTC day (a day holds ≤ 14,400 6-second segments). */
+const SEQUENCE_PER_DAY = 100_000;
+
+/**
+ * A stable EXT-X-MEDIA-SEQUENCE for the live window: the first segment's index
+ * within its UTC day, offset by the day number. Unlike floor(epoch / 6) it
+ * never repeats or skips when segments aren't exactly 6 s apart (encoder
+ * respawns), so hls.js live reloads stay aligned. `day` must hold every segment
+ * of that UTC day (listRecentSegments lists whole day buckets).
+ */
+export function liveMediaSequence(first: SegmentRef, all: SegmentRef[]): number {
+  const day = utcDayStamp(first.epoch);
+  let index = 0;
+  for (const r of all) if (r.epoch < first.epoch && utcDayStamp(r.epoch) === day) index++;
+  return Math.floor(first.epoch / 86_400) * SEQUENCE_PER_DAY + index;
+}
+
+// ------------------------------------------------------------- clip exports
+
+/** Lifetime of a signed clip-download URL. */
+const CLIP_URL_TTL_SECONDS = 300;
+
+interface ClipClaims extends jwt.JwtPayload {
+  sub: string;
+  tv: number;
+  typ: "clip";
+  cam: string;
+  from: number;
+  to: number;
+}
+
+let activeClips = 0;
+const activeClipsByUser = new Map<string, number>();
+
+/** Reserve an export slot or throw 429; returns the release function. */
+export function acquireClipSlot(userId: string): () => void {
+  const mine = activeClipsByUser.get(userId) ?? 0;
+  if (activeClips >= config.clipMaxConcurrent || mine >= config.clipMaxPerUser) {
+    throw new HttpError(429, "rate_limited", "Another clip export is still running — try again when it finishes", {
+      retryAfterSeconds: 10,
+    });
+  }
+  activeClips++;
+  activeClipsByUser.set(userId, mine + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeClips--;
+    const n = (activeClipsByUser.get(userId) ?? 1) - 1;
+    if (n <= 0) activeClipsByUser.delete(userId);
+    else activeClipsByUser.set(userId, n);
+  };
+}
+
+/** Validate a clip range: both bounds present, ordered, and within CLIP_MAX_SECONDS. */
+function clipRange(q: { from?: string; to?: string }): { from: number; to: number } {
+  const from = parseTime(q.from);
+  const to = parseTime(q.to);
+  if (from === undefined || to === undefined || to <= from) {
+    throw badRequest("from and to (epoch seconds or ISO) are required, with to > from");
+  }
+  if (to - from > config.clipMaxSeconds) {
+    throw badRequest(
+      `Clips are limited to ${Math.round(config.clipMaxSeconds / 60)} minutes — export a shorter range`,
+      "clip_too_long",
+    );
+  }
+  return { from, to };
+}
+
+/**
+ * The clip route accepts EITHER a normal bearer session OR a short-lived signed
+ * `dl` token (from POST …/clip-url) scoped to exactly this camera and range, so
+ * a browser can stream the download straight to disk via a plain link.
+ */
+async function requireClipAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const q = req.query as { dl?: string; from?: string; to?: string };
+  if (!q.dl) return requireUser(req, reply);
+  const { cameraId } = req.params as { cameraId: string };
+  let claims: ClipClaims;
+  try {
+    claims = jwt.verify(q.dl, config.jwtSecret) as ClipClaims;
+  } catch {
+    throw unauthorized("Download link expired — export the clip again");
+  }
+  if (
+    claims.typ !== "clip" ||
+    claims.cam !== cameraId ||
+    claims.from !== parseTime(q.from) ||
+    claims.to !== parseTime(q.to)
+  ) {
+    throw unauthorized("Download link does not match this clip");
+  }
+  // Same revocation rule as sessions: a logout-everywhere or password change
+  // also kills outstanding download links.
+  const user = await prisma.user.findUnique({ where: { id: claims.sub } });
+  if (!user || user.tokenVersion !== claims.tv) throw unauthorized();
+  req.user = user;
+}
 
 /** Segments + day files are content-addressed by name and never rewritten. */
 const IMMUTABLE_CACHE = "private, max-age=31536000, immutable";
@@ -141,14 +253,15 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // Permanently delete a [from,to) range of footage (the segments backing one
-  // coverage span). Same access guard as playback — only Home members can prune.
+  // coverage span). OWNER ONLY and audited: erasing footage is exactly what an
+  // intruder with a member account would want to do.
   app.delete(
     "/cameras/:cameraId/recordings",
     { preHandler: requireUser },
     async (req): Promise<DeleteRecordingsResponse> => {
       const { cameraId } = req.params as { cameraId: string };
       const q = req.query as { from?: string; to?: string };
-      const camera = await requireCameraAccess(req.user!.id, cameraId);
+      const camera = await requireCameraOwner(req.user!.id, cameraId, "delete recordings");
 
       const from = parseTime(q.from);
       const to = parseTime(q.to);
@@ -160,6 +273,17 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         cameraDir(camera.homeId, cameraId),
         from,
         to,
+      );
+      await audit(
+        {
+          homeId: camera.homeId,
+          actor: userActor(req.user!),
+          action: "recordings.deleted",
+          targetType: "camera",
+          targetId: cameraId,
+          details: { name: camera.name, from: iso(from), to: iso(to), deletedSegments, deletedBytes },
+        },
+        req.log,
       );
       return { cameraId, deletedSegments, deletedBytes };
     },
@@ -196,9 +320,9 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         // use epoch + name).
         const all = await listRecentSegments(dir);
         refs = all.slice(Math.max(0, all.length - LIVE_WINDOW_SEGMENTS));
-        // Monotonic media sequence derived from wall-clock so pruning the oldest
-        // segments never makes the sequence go backwards across refreshes.
-        if (refs[0]) mediaSequence = Math.floor(refs[0].epoch / DEFAULT_SEGMENT_SECONDS);
+        // Stable ordinal (index within the UTC day + day offset): advances by
+        // exactly one per new segment regardless of segment spacing.
+        if (refs[0]) mediaSequence = liveMediaSequence(refs[0], all);
       }
 
       // Consolidated refs carry byteRange/container, so renderPlaylist emits
@@ -296,20 +420,59 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
   // from 320x180 to 1080p within a single day). planClipEncode reads each piece's
   // SPS to tell the two cases apart — uniform ranges still stream out with
   // `-c copy`, mixed ones are re-encoded onto the range's largest geometry.
+  // Mint a short-lived, range-scoped download URL for clip.mp4 so the browser
+  // can stream the file to disk with a plain link (no Authorization header, no
+  // in-memory Blob of the whole MP4).
+  app.post(
+    "/recordings/:cameraId/clip-url",
+    { preHandler: requireUser },
+    async (req): Promise<ClipUrlResponse> => {
+      const { cameraId } = req.params as { cameraId: string };
+      const q = req.query as { from?: string; to?: string };
+      await requireCameraAccess(req.user!.id, cameraId);
+      const { from, to } = clipRange(q);
+      const claims: Omit<ClipClaims, "iat" | "exp"> = {
+        sub: req.user!.id,
+        tv: req.user!.tokenVersion,
+        typ: "clip",
+        cam: cameraId,
+        from,
+        to,
+      };
+      const dl = jwt.sign(claims, config.jwtSecret, { expiresIn: CLIP_URL_TTL_SECONDS });
+      const params = new URLSearchParams({ from: String(from), to: String(to), dl });
+      return {
+        url: `/recordings/${encodeURIComponent(cameraId)}/clip.mp4?${params.toString()}`,
+        expiresAt: new Date(Date.now() + CLIP_URL_TTL_SECONDS * 1000).toISOString(),
+      };
+    },
+  );
+
+  // Remux a [from,to] range into a single downloadable MP4 (one-shot ffmpeg).
+  // Segment bytes are piped into ffmpeg's stdin in epoch order — consolidated
+  // segments as byte windows of their day file, loose ones whole — so no
+  // temp concat-list file and no reliance on every segment being its own file.
+  //
+  // An MP4 track declares ONE resolution, so a range whose segments disagree
+  // cannot be copied: the header would claim the first piece's size for the whole
+  // clip (footage recorded before the recorder pinned its layer runs anywhere
+  // from 320x180 to 1080p within a single day). planClipEncode reads each piece's
+  // SPS to tell the two cases apart — uniform ranges still stream out with
+  // `-c copy`, mixed ones are re-encoded onto the range's largest geometry.
+  //
+  // Failure is never reported as success: ffmpeg's output is held back from the
+  // response until its exit status is known, and a non-zero exit destroys the
+  // response so the browser shows a FAILED download, not a silent 0-byte or
+  // truncated file.
   app.get(
     "/recordings/:cameraId/clip.mp4",
-    { preHandler: requireUser },
+    { preHandler: requireClipAuth },
     async (req, reply) => {
       const { cameraId } = req.params as { cameraId: string };
       const q = req.query as { from?: string; to?: string };
       const camera = await requireCameraAccess(req.user!.id, cameraId);
       const dir = cameraDir(camera.homeId, cameraId);
-
-      const from = parseTime(q.from);
-      const to = parseTime(q.to);
-      if (from === undefined || to === undefined || to <= from) {
-        throw badRequest("from and to (epoch seconds or ISO) are required, with to > from");
-      }
+      const { from, to } = clipRange(q);
 
       // Fresh (uncached) listing so a clip export always sees the tree as it
       // is, but skip the stat sweep — only paths/byte windows feed the remux.
@@ -321,7 +484,14 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
       const pieces = await resolveClipPieces(dir, refs);
       if (pieces.length === 0) throw notFound("No footage in the requested range");
 
-      const plan = await planClipEncode(pieces);
+      const release = acquireClipSlot(req.user!.id);
+      let plan;
+      try {
+        plan = await planClipEncode(pieces);
+      } catch (err) {
+        release();
+        throw err;
+      }
       const muxArgs = clipMuxArgs(plan);
       if (!plan.uniform && plan.target) {
         req.log.info(
@@ -349,13 +519,38 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
         "pipe:1",
       ]);
 
-      ff.on("error", (err) => {
-        req.log.error({ err }, "clip ffmpeg failed to start");
+      // Response body: ffmpeg's stdout, but the END of the response waits for
+      // ffmpeg's exit status (see above).
+      const body = new PassThrough();
+      ff.stdout.pipe(body, { end: false });
+      const stderrTail: string[] = [];
+      ff.stderr.on("data", (d) => {
+        const text = String(d).trim();
+        if (!text) return;
+        stderrTail.push(text);
+        if (stderrTail.length > 20) stderrTail.shift();
+        req.log.debug({ ff: text }, "clip ffmpeg");
       });
-      ff.stderr.on("data", (d) => req.log.debug({ ff: String(d) }, "clip ffmpeg"));
+      ff.on("error", (err) => {
+        // A spawn failure (bad FFMPEG_PATH) may emit only 'error', never
+        // 'close' — release the export slot here too (release is idempotent).
+        release();
+        req.log.error({ err, ffmpeg: config.ffmpegPath }, "clip ffmpeg failed to start");
+        body.destroy(err);
+      });
+      ff.on("close", (code, signal) => {
+        release();
+        if (code === 0) {
+          body.end();
+          return;
+        }
+        if (signal === "SIGKILL" && reply.raw.destroyed) return; // client went away
+        req.log.error({ code, signal, stderr: stderrTail.join("\n") }, "clip export failed");
+        body.destroy(new Error(`ffmpeg exited with ${code ?? signal}`));
+      });
       // If the client goes away, stop encoding.
       reply.raw.on("close", () => {
-        if (!ff.killed) ff.kill("SIGKILL");
+        if (ff.exitCode === null && !ff.killed) ff.kill("SIGKILL");
       });
 
       // Feed pieces sequentially with backpressure; stdin ends after the last
@@ -376,8 +571,9 @@ export async function recordingRoutes(app: FastifyInstance): Promise<void> {
 
       return reply
         .header("Content-Disposition", `attachment; filename="clip-${from}-${to}.mp4"`)
+        .header("Cache-Control", "no-store")
         .type("video/mp4")
-        .send(ff.stdout);
+        .send(body);
     },
   );
 }

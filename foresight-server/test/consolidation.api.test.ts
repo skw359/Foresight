@@ -6,6 +6,7 @@
  * rewrite day files. Fixtures carry distinct byte content per segment so every
  * served slice is verified byte-for-byte.
  */
+import { TEST_LIVEKIT_SECRET, TEST_RECORDER_SECRET, applyTestEnv } from "./testEnv.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -41,11 +42,9 @@ const migrationFiles = readdirSync(migrationsDir)
 const dbDir = mkdtempSync(join(tmpdir(), "foresight-consol-db-"));
 const dbPath = join(dbDir, "test.db");
 process.env.DATABASE_URL = `file:${dbPath}`;
-process.env.JWT_SECRET = "test-secret";
+applyTestEnv();
 process.env.LIVEKIT_URL = "ws://localhost:7880";
 process.env.LIVEKIT_PUBLIC_URL = "ws://localhost:7880";
-process.env.LIVEKIT_API_KEY = "devkey";
-process.env.LIVEKIT_API_SECRET = "secret";
 process.env.PUBLIC_SERVER_URL = "http://localhost:3199";
 // Isolated on-disk segment tree for the consolidated-day fixtures.
 const recDir = mkdtempSync(join(tmpdir(), "foresight-consol-rec-"));

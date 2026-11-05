@@ -1,5 +1,5 @@
 /**
- * Lazy libsodium-wrappers-sumo loader (E2EE_MODEL_B_PLAN.md §9.2).
+ * Lazy libsodium-wrappers-sumo loader (shared/E2EE.md §9.2).
  *
  * The ~150 KB gz WASM must NEVER land in the entry bundle. This module reaches
  * libsodium exclusively through a dynamic `import()`, so every importer receives

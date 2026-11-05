@@ -1,5 +1,5 @@
 /**
- * Dedicated KDF Web Worker (E2EE_MODEL_B_PLAN.md §9.2).
+ * Dedicated KDF Web Worker (shared/E2EE.md §9.2).
  *
  * At memlimit=64 MiB the Argon2id WASM KDF takes ~0.5–2 s and BLOCKS its calling
  * thread, so vault CREATE (register / first-login) and vault UNLOCK both run
@@ -36,7 +36,14 @@ interface UnlockRequest {
   password: string;
   vault: EncryptedKeyVault;
 }
-type WorkerRequest = CreateRequest | UnlockRequest;
+interface RewrapRequest {
+  id: number;
+  op: "rewrap";
+  password: string;
+  newPassword: string;
+  vault: EncryptedKeyVault;
+}
+type WorkerRequest = CreateRequest | UnlockRequest | RewrapRequest;
 
 export type VaultWorkerResponse =
   | { id: number; ok: true; vault: EncryptedKeyVault | null; publicKey: string; privateKey: string }
@@ -49,6 +56,53 @@ const ctx = self as unknown as {
   postMessage(message: VaultWorkerResponse): void;
   addEventListener(type: "message", listener: (ev: MessageEvent<WorkerRequest>) => void): void;
 };
+
+/** Wrap `privateKey` under `password` with a fresh salt + nonce at the current KDF params. */
+async function wrap(
+  publicKey: Uint8Array,
+  privateKey: Uint8Array,
+  password: string,
+): Promise<EncryptedKeyVault> {
+  const sodium = await loadSodium();
+  const salt = sodium.randombytes_buf(E2EE_KDF_SALT_BYTES);
+  const vaultKey = sodium.crypto_pwhash(
+    sodium.crypto_secretbox_KEYBYTES,
+    password,
+    salt,
+    E2EE_ARGON2ID_OPSLIMIT,
+    E2EE_ARGON2ID_MEMLIMIT,
+    sodium.crypto_pwhash_ALG_ARGON2ID13,
+  );
+  const nonce = sodium.randombytes_buf(E2EE_SECRETBOX_NONCE_BYTES);
+  const wrapped = sodium.crypto_secretbox_easy(privateKey, nonce, vaultKey);
+  sodium.memzero(vaultKey);
+  return {
+    publicKey: b64encode(sodium, publicKey),
+    wrappedPrivateKey: b64encode(sodium, wrapped),
+    nonce: b64encode(sodium, nonce),
+    kdf: {
+      algo: "argon2id",
+      opslimit: E2EE_ARGON2ID_OPSLIMIT,
+      memlimit: E2EE_ARGON2ID_MEMLIMIT,
+      saltB64: b64encode(sodium, salt),
+    },
+  };
+}
+
+/**
+ * Password change: open the vault with the CURRENT password, then re-wrap the
+ * same keypair under the new one. The identity (public key) is unchanged, so
+ * every sealed Home key keeps working and no TOFU pin changes.
+ */
+async function rewrap(password: string, newPassword: string, vault: EncryptedKeyVault): Promise<VaultWorkerResponse> {
+  const sodium = await loadSodium();
+  const opened = await unlock(password, vault);
+  if (!opened.ok) return opened;
+  const privateKey = b64decode(sodium, opened.privateKey);
+  const next = await wrap(b64decode(sodium, vault.publicKey), privateKey, newPassword);
+  sodium.memzero(privateKey);
+  return { id: 0, ok: true, vault: next, publicKey: vault.publicKey, privateKey: opened.privateKey };
+}
 
 /** Register / first-login: generate an X25519 identity + wrap it under the password. */
 async function create(password: string): Promise<VaultWorkerResponse> {
@@ -126,7 +180,12 @@ ctx.addEventListener("message", (ev) => {
   const req = ev.data;
   void (async () => {
     try {
-      const result = req.op === "create" ? await create(req.password) : await unlock(req.password, req.vault);
+      const result =
+        req.op === "create"
+          ? await create(req.password)
+          : req.op === "rewrap"
+            ? await rewrap(req.password, req.newPassword, req.vault)
+            : await unlock(req.password, req.vault);
       ctx.postMessage({ ...result, id: req.id });
     } catch (err) {
       ctx.postMessage({

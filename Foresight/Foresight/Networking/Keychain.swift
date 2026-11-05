@@ -35,7 +35,8 @@ enum Keychain {
         SecItemDelete(query as CFDictionary)
         var attributes = query
         attributes[kSecValueData as String] = data
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // ThisDeviceOnly: the session token never travels in a backup to another device.
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(attributes as CFDictionary, nil)
     }
 
@@ -50,6 +51,16 @@ enum Keychain {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
+        // Items written by earlier versions were backup-eligible; tighten in place.
+        let match: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: item.rawValue,
+        ]
+        let update: [String: Any] = [
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        SecItemUpdate(match as CFDictionary, update as CFDictionary)
         return String(data: data, encoding: .utf8)
     }
 

@@ -75,6 +75,19 @@ struct BackendClient {
         try await postExpectingNoContent(path: "/cameras/\(cameraId)/pubkey", body: body)
     }
 
+    /// POST /cameras/:id/unpair — the camera removes ITSELF from its Home,
+    /// authenticated by its own device secret (so "Unpair" really removes it
+    /// server-side instead of leaving a permanently offline camera behind).
+    /// 2xx = removed; 404 = already gone (both are success for the caller).
+    func unpairCamera(cameraId: String, deviceSecret: String) async throws {
+        struct Body: Encodable { let deviceSecret: String }
+        do {
+            try await postExpectingNoContent(path: "/cameras/\(cameraId)/unpair", body: Body(deviceSecret: deviceSecret))
+        } catch BackendError.http(let status, _) where status == 404 {
+            return
+        }
+    }
+
     // MARK: Plumbing
 
     private func post<Body: Encodable, Response: Decodable>(

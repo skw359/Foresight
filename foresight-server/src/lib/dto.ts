@@ -22,6 +22,7 @@ export function toUserDTO(u: User): UserDTO {
     identifier: u.identifier,
     firstName: u.firstName,
     createdAt: u.createdAt.toISOString(),
+    isAdmin: u.isAdmin,
   };
 }
 
@@ -53,6 +54,7 @@ export function toHomeDTO(h: Home, role: MemberRole, recorderConsented = false):
     createdAt: h.createdAt.toISOString(),
     keyEpoch: h.keyEpoch,
     recorderConsented,
+    keyRotationRequired: h.keyEpoch >= 1 && h.keyRotationRequired,
   };
 }
 

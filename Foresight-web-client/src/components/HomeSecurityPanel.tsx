@@ -1,5 +1,5 @@
 /**
- * Owner-only End-to-End Encryption control surface for a Home (E2EE_MODEL_B_PLAN
+ * Owner-only End-to-End Encryption control surface for a Home (shared/E2EE.md
  * §6, §7.2, §10.5), rendered as the Security tab of the Home's Settings page.
  * Handles, all as EXPLICIT owner actions:
  *   - Activation (epoch 0→1): eligibility precheck (every camera needs a pubkey),
@@ -294,6 +294,21 @@ export function HomeSecurityPanel({
       {notice && (
         <div className="notice-box">
           <Icon name="check" size={16} /> <span>{notice}</span>
+        </div>
+      )}
+
+      {activated && home.keyRotationRequired && (
+        <div className="error-box" role="alert" style={{ display: "block" }}>
+          <strong>
+            <Icon name="shieldAlert" size={15} /> Rotate this Home's key.
+          </strong>
+          <p style={{ margin: "6px 0" }}>
+            A member, camera or account that held this Home's encryption key was removed. Until the
+            key is rotated, that copy could still decrypt new video.
+          </p>
+          <button className="btn danger sm" disabled={busy !== null} onClick={() => void manualRotate()}>
+            {busy === "rotate" ? <span className="spinner" /> : "Rotate now"}
+          </button>
         </div>
       )}
 

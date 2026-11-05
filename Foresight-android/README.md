@@ -4,7 +4,7 @@ Native Android viewer for Foresight Security, at feature parity with the iOS
 viewer (`../Foresight`): auth, Homes, live camera grid, full-screen viewing
 with camera controls, pairing-QR display, push-to-talk, listen, snapshots,
 local recordings, rename/remove, settings — and **media-only E2EE** per
-`../E2EE_MODEL_B_PLAN.md`.
+`../shared/E2EE.md`.
 
 Kotlin + Jetpack Compose, package `com.foresight.viewer`, minSdk 29 / target 35.
 

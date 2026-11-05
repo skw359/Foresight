@@ -61,7 +61,10 @@ function ensureWorker(): Worker {
 }
 
 function callWorker(
-  payload: { op: "create"; password: string } | { op: "unlock"; password: string; vault: EncryptedKeyVault },
+  payload:
+    | { op: "create"; password: string }
+    | { op: "unlock"; password: string; vault: EncryptedKeyVault }
+    | { op: "rewrap"; password: string; newPassword: string; vault: EncryptedKeyVault },
 ): Promise<OkResponse> {
   const w = ensureWorker();
   const id = ++seq;
@@ -96,6 +99,21 @@ export async function unlockVault(password: string, vault: EncryptedKeyVault): P
   await ensureSelfTest();
   const res = await callWorker({ op: "unlock", password, vault });
   return toIdentity(res.publicKey, res.privateKey);
+}
+
+/**
+ * Password change: re-wrap the SAME keypair under `newPassword` (in-worker).
+ * Throws if `password` doesn't open the vault.
+ */
+export async function rewrapVault(
+  password: string,
+  newPassword: string,
+  vault: EncryptedKeyVault,
+): Promise<EncryptedKeyVault> {
+  await ensureSelfTest();
+  const res = await callWorker({ op: "rewrap", password, newPassword, vault });
+  if (!res.vault) throw new Error("Vault re-wrap returned no vault");
+  return res.vault;
 }
 
 /* ------------------------------------------------------------- startup self-test */

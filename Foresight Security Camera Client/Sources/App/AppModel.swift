@@ -5,8 +5,13 @@
 //  Top-level coordinator. Decides whether to show the pairing flow or camera
 //  mode, owns the active RealtimeSession, and manages app-wide concerns:
 //    - hydrating a saved pairing on launch (skip pairing if already paired)
+//      and RESUMING streaming when it was on before (REL-01: a relaunch after a
+//      power cut, jetsam kill or reboot must not leave the camera dark until
+//      someone taps "Go Live")
+//    - nudging the session's supervisor when the app becomes active
 //    - AV permission requests
 //    - keeping the screen awake (isIdleTimerDisabled) while streaming
+//    - unpairing on the server too (CAM-01)
 //
 
 import AVFoundation
@@ -32,6 +37,11 @@ final class AppModel: ObservableObject {
     /// camera). Surfaced in camera mode; nil = healthy.
     @Published private(set) var keyRegistrationError: String?
 
+    /// Shown on the pairing screen after an unpair the server couldn't confirm.
+    @Published private(set) var unpairNotice: String?
+
+    private var activeObserver: NSObjectProtocol?
+
     let telemetry = DeviceTelemetry()
 
     /// The one-shot existing-camera pubkey migration, held so it can be cancelled
@@ -40,18 +50,41 @@ final class AppModel: ObservableObject {
 
     init() {
         hydrate()
+        // Coming back to the foreground (or the screen waking) is a good moment
+        // to retry a dropped stream immediately rather than waiting out backoff.
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.session?.nudge(reason: "app became active") }
+        }
     }
 
     /// Load any persisted pairing and route accordingly.
     func hydrate() {
         if let stored = PairingStore.load() {
             paired = stored
-            session = RealtimeSession(paired: stored, telemetry: telemetry)
+            let session = RealtimeSession(paired: stored, telemetry: telemetry)
+            self.session = session
             phase = .camera
             startKeyMigrationIfNeeded(for: stored)
+            if session.wantsStreaming {
+                Task { [weak self] in await self?.resumeStreamingAfterLaunch() }
+            }
         } else {
             phase = .pairing
         }
+    }
+
+    /// Streaming was on when the app last ran: resume without a tap, as long as
+    /// the camera permission still stands (iOS can revoke it in Settings).
+    private func resumeStreamingAfterLaunch() async {
+        guard cameraAuthorized() else {
+            print("[Foresight Camera] streaming was on, but camera access is no longer granted")
+            return
+        }
+        await startStreaming()
     }
 
     // MARK: Existing-camera E2EE migration (plan §6 migrate-existing-camera)
@@ -107,16 +140,31 @@ final class AppModel: ObservableObject {
     func completePairing(_ camera: PairedCamera) {
         PairingStore.save(camera)
         paired = camera
+        unpairNotice = nil
         session = RealtimeSession(paired: camera, telemetry: telemetry)
         phase = .camera
     }
 
-    /// Forget the camera and return to pairing.
+    /// Remove the camera from its Home (server-side, authenticated by the
+    /// device secret), forget it locally, and return to pairing. If the server
+    /// can't be reached the camera is still forgotten here, and the user is told
+    /// to remove it from the dashboard so it doesn't linger as an offline camera
+    /// with live credentials.
     func unpair() async {
         keyMigrationTask?.cancel()
         keyMigrationTask = nil
         keyRegistrationError = nil
         await session?.stop()
+        session?.invalidate()
+        if let paired {
+            do {
+                try await BackendClient(serverUrl: paired.serverUrl)
+                    .unpairCamera(cameraId: paired.cameraId, deviceSecret: paired.deviceSecret)
+                unpairNotice = nil
+            } catch {
+                unpairNotice = "Couldn't reach the server to remove \"\(paired.name)\" from your Home — remove it from the dashboard."
+            }
+        }
         session = nil
         PairingStore.clear()
         CameraKeyManager.clear()   // drop the E2EE keypair so a re-pair starts fresh
@@ -136,6 +184,10 @@ final class AppModel: ObservableObject {
     func stopStreaming() async {
         await session?.stop()
         setKeepAwake(false)
+    }
+
+    func clearUnpairNotice() {
+        unpairNotice = nil
     }
 
     /// Keep the display awake while streaming so the camera never sleeps.

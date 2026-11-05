@@ -9,7 +9,7 @@
  * silently stop recording.
  *
  * The reconcile response also carries per-Home E2EE key state (RecorderReconcile
- * Response.homeKeys — E2EE_MODEL_B_PLAN.md §8.2). It is the source of truth for
+ * Response.homeKeys — shared/E2EE.md §8.2). It is the source of truth for
  * keys: the KeyManager unseals + caches it here, and any rotation / revocation /
  * consent-grant it detects is applied to the live rooms via RoomManager.syncHome.
  */
@@ -28,13 +28,21 @@ export async function reconcileOnce(rm: RoomManager, keyManager: KeyManager): Pr
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
-      log.warn("reconcile: server returned non-2xx", { status: res.status });
+      log.warn("reconcile: server returned non-2xx", {
+        status: res.status,
+        ...(res.status === 404
+          ? { hint: "the server's internal API now listens on INTERNAL_PORT (default 3198): set SERVER_URL=http://127.0.0.1:3198" }
+          : {}),
+      });
+      await rm.healthCheck();
       return;
     }
     body = (await res.json()) as RecorderReconcileResponse;
   } catch (err) {
-    // Server down / unreachable — leave current state untouched and retry later.
+    // Server down / unreachable — keep the current armed set, but still heal
+    // dropped rooms (recording must not depend on the server being up).
     log.warn("reconcile: server unreachable", { err: String(err) });
+    await rm.healthCheck();
     return;
   }
 
@@ -75,6 +83,11 @@ export async function reconcileOnce(rm: RoomManager, keyManager: KeyManager): Pr
       log.warn("reconcile: syncHome failed", { homeId, change, err: String(err) }),
     );
   }
+
+  // 4. Health: an armed camera whose room dropped is NOT "missing" from the
+  //    armed set, so step 2 wouldn't touch it. Reconnect any armed Home whose
+  //    room is down — this is what makes the loop a real self-healing backstop.
+  await rm.healthCheck();
 }
 
 /** Start the periodic reconcile loop; returns a stop() handle. */

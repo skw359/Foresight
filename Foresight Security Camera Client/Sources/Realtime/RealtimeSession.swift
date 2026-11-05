@@ -11,6 +11,12 @@
 //    - on talkStart/talkStop, routes the viewer's audio to the loudspeaker and
 //      flips the "Viewer is speaking" indicator
 //    - tracks viewerCount from remote participants whose metadata role is viewer
+//    - SUPERVISES the connection (REL-01): once streaming is wanted, a failed
+//      start, an exhausted SDK reconnect, or a server/LiveKit restart is retried
+//      with capped exponential backoff (1 s → 60 s, jittered), and a network
+//      change or app activation retries immediately. Only an explicit stop()
+//      ends it. The intent is persisted, so a relaunch resumes streaming.
+//    - steps capture quality down while the phone is hot (REL-02)
 //
 //  All published @Published properties drive the camera-mode UI.
 //
@@ -18,6 +24,7 @@
 import Combine
 import Foundation
 import LiveKit
+import Network
 
 /// High-level connection status surfaced to the UI.
 enum StreamStatus: Equatable {
@@ -82,9 +89,35 @@ final class RealtimeSession: NSObject, ObservableObject {
     /// live (`setKey`) without republishing. See §3.2 for the locked contract.
     private var keyProvider: BaseKeyProvider?
 
-    /// Retry loop for the "awaiting key" state: an activated Home whose sealed
-    /// copy hasn't been minted for us yet. Re-requests /rt/token until it appears.
-    private var keyRetryTask: Task<Void, Never>?
+    // MARK: Supervisor (REL-01)
+
+    /// UserDefaults key persisting whether the user wants this camera live.
+    static let wantsStreamingKey = "foresight.camera.wantsStreaming"
+
+    /// Whether streaming is WANTED (persisted). The supervisor keeps retrying
+    /// while this is true; only an explicit `stop()` clears it.
+    @Published private(set) var wantsStreaming: Bool
+
+    /// When the next automatic retry fires (nil when none is scheduled) — shown in the UI.
+    @Published private(set) var nextRetryAt: Date?
+
+    /// The pending retry (backoff, or the 5 s awaiting-key poll).
+    private var retryTask: Task<Void, Never>?
+    private var retryAttempt = 0
+
+    /// Wakes the supervisor as soon as a usable network path appears.
+    private let pathMonitor = NWPathMonitor()
+
+    /// Periodic E2EE backstop while streaming: re-checks the Home's key epoch
+    /// so a missed `rekey` (activation, rotation, disable) still converges.
+    private var epochCheckTask: Task<Void, Never>?
+    private static let epochCheckInterval: UInt64 = 5 * 60 * 1_000_000_000
+
+    // MARK: Thermal policy (REL-02)
+
+    /// The quality the user/viewers chose, restored once the phone cools down.
+    private var qualityBeforeThermalStep: QualityPreset?
+    private var thermalObserver: NSObjectProtocol?
 
     /// The current video publication, kept so we can unpublish on a publish-mode
     /// change (entering/leaving Pure 4K).
@@ -116,10 +149,40 @@ final class RealtimeSession: NSObject, ObservableObject {
         self.camera = CameraController(capabilities: paired.capabilities)
         self.telemetry = telemetry
         self.room = Room()
+        self.wantsStreaming = UserDefaults.standard.bool(forKey: Self.wantsStreamingKey)
         super.init()
 
         self.lens = camera.activeLens
         self.room.add(delegate: self)
+
+        // A network path coming back (router reboot, Wi-Fi rejoin) retries now
+        // instead of waiting out the backoff. Delivered on the MAIN queue: this
+        // closure is formed in a @MainActor initializer, and Swift 6 traps if a
+        // main-actor-isolated closure is invoked from a background queue.
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in self?.nudge(reason: "network available") }
+        }
+        pathMonitor.start(queue: .main)
+
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.applyThermalPolicy() }
+        }
+    }
+
+    /// Release the network monitor + observers (the session is being discarded, e.g. unpair).
+    func invalidate() {
+        pathMonitor.cancel()
+        if let thermalObserver { NotificationCenter.default.removeObserver(thermalObserver) }
+        thermalObserver = nil
+        retryTask?.cancel()
+        retryTask = nil
+        epochCheckTask?.cancel()
+        epochCheckTask = nil
     }
 
     var cameraId: String { paired.cameraId }
@@ -128,12 +191,77 @@ final class RealtimeSession: NSObject, ObservableObject {
 
     // MARK: Lifecycle
 
-    /// Mint a token, connect, and start publishing.
+    /// Go live and KEEP going: remember that streaming is wanted (persisted
+    /// across launches), then connect. Failures are retried by the supervisor.
     func start() async {
+        setWantsStreaming(true)
+        cancelRetry()
+        retryAttempt = 0
+        await connect()
+    }
+
+    /// Explicit stop: the ONLY thing that ends supervision.
+    func stop() async {
+        setWantsStreaming(false)
+        cancelRetry()
+        await disconnect()
+    }
+
+    /// Something suggests a retry could succeed now (network back, app became
+    /// active, relaunch): skip the rest of the backoff.
+    func nudge(reason: String) {
+        guard wantsStreaming else { return }
+        switch status {
+        case .streaming, .connecting, .reconnecting: return
+        case .idle, .offline: break
+        }
+        print("[Foresight Camera] supervisor nudge: \(reason)")
+        cancelRetry()
+        retryAttempt = 0
+        Task { await self.connect() }
+    }
+
+    private func setWantsStreaming(_ on: Bool) {
+        wantsStreaming = on
+        UserDefaults.standard.set(on, forKey: Self.wantsStreamingKey)
+    }
+
+    private func cancelRetry() {
+        retryTask?.cancel()
+        retryTask = nil
+        nextRetryAt = nil
+    }
+
+    /// 1, 2, 4 … 60 s, ±20 % jitter so a fleet of cameras doesn't reconnect in lockstep.
+    static func backoffDelay(attempt: Int) -> TimeInterval {
+        let base = min(60.0, pow(2.0, Double(min(max(attempt, 0), 6))))
+        return base * Double.random(in: 0.8...1.2)
+    }
+
+    /// Schedule the next connect attempt while streaming is wanted.
+    private func scheduleRetry(reason: String?, fixedDelay: TimeInterval? = nil) {
+        guard wantsStreaming else { return }
+        retryTask?.cancel()
+        let delay = fixedDelay ?? Self.backoffDelay(attempt: retryAttempt)
+        if fixedDelay == nil { retryAttempt += 1 }
+        let fireAt = Date().addingTimeInterval(delay)
+        nextRetryAt = fireAt
+        let retryText = "retrying in \(Int(delay.rounded()))s"
+        status = .offline([reason, retryText].compactMap { $0 }.joined(separator: " — "))
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.retryTask = nil
+            self.nextRetryAt = nil
+            await self.connect()
+        }
+    }
+
+    /// Mint a token, connect, and start publishing. On failure the supervisor
+    /// schedules another attempt.
+    private func connect() async {
+        guard wantsStreaming else { return }
         guard status != .streaming, status != .connecting else { return }
-        // A fresh start supersedes any pending awaiting-key retry.
-        keyRetryTask?.cancel()
-        keyRetryTask = nil
         status = .connecting
         lastError = nil
 
@@ -147,10 +275,9 @@ final class RealtimeSession: NSObject, ObservableObject {
             if epoch >= 1 {
                 guard let sealed = rt.sealedHomeKey else {
                     // Activated Home, but our sealed copy isn't ready yet. NEVER
-                    // publish plaintext into an activated Home — wait and retry.
+                    // publish plaintext into an activated Home — poll every 5 s.
                     keyProvider = nil
-                    status = .offline("Waiting for key…")
-                    scheduleKeyRetry()
+                    scheduleRetry(reason: "Waiting for key…", fixedDelay: 5)
                     return
                 }
                 // Unseal the HMK and apply it to a shared-key provider BEFORE we
@@ -195,24 +322,39 @@ final class RealtimeSession: NSObject, ObservableObject {
 
             try await publishTracks()
             startTelemetry()
+            startEpochCheck()
             recomputeViewerCount()
             status = .streaming
+            retryAttempt = 0
+            nextRetryAt = nil
             broadcastState()
+            await applyThermalPolicy()
         } catch {
-            status = .offline(error.localizedDescription)
             lastError = error.localizedDescription
+            // Leave the half-open room cleanly before the next attempt.
+            await room.disconnect()
+            previewTrack = nil
+            scheduleRetry(reason: error.localizedDescription)
         }
     }
 
-    /// Tear down publishing and disconnect.
-    func stop() async {
-        keyRetryTask?.cancel()
-        keyRetryTask = nil
+    /// Tear down publishing and disconnect (does NOT change the streaming intent).
+    private func disconnect() async {
+        // Mark idle FIRST so the delegate's .disconnected callback for this
+        // intentional teardown isn't mistaken for a dropped connection.
+        status = .idle
         stopTelemetry()
+        stopEpochCheck()
         await room.disconnect()
         previewTrack = nil
         keyProvider = nil
         status = .idle
+    }
+
+    /// Reconnect (e.g. E2EE switched on/off: frame encryption is fixed per connection).
+    private func restart() async {
+        await disconnect()
+        await connect()
     }
 
     // MARK: E2EE (plan §3.2 locked contract)
@@ -232,41 +374,41 @@ final class RealtimeSession: NSObject, ObservableObject {
         return BaseKeyProvider(options: options)
     }
 
-    /// Re-request /rt/token after a short delay while awaiting our sealed key.
-    private func scheduleKeyRetry() {
-        keyRetryTask?.cancel()
-        keyRetryTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)   // 5s
-            guard let self, !Task.isCancelled else { return }
-            await self.start()   // re-enters the gate; guarded against double-connect
-        }
+    /// A `rekey` arrived (from the server, or the rotating owner's client): the
+    /// Home's key state changed. Re-fetch our sealed copy and converge.
+    private func handleRekey(_ rekey: RekeyMessage) async {
+        _ = rekey   // `epoch` is a hint; the server's /rt/token answer is the truth
+        await reconcileKeyState()
     }
 
-    /// A rotating client broadcast a `rekey`: the HMK rotated to `epoch`. Re-fetch
-    /// our sealed copy and re-apply it live at key index 0 — no republish (the
-    /// frame cryptors keep the same provider; only the shared key changes). `epoch`
-    /// is server bookkeeping, never a LiveKit key index (§3.2).
-    ///
-    /// If the token says keyEpoch 0, the owner turned E2EE off: frame encryption
-    /// is fixed when the room connects, so reconnect and let `start()`'s gate
-    /// publish plaintext.
-    private func handleRekey(_ rekey: RekeyMessage) async {
-        guard let provider = keyProvider else {
-            // Plaintext (non-activated) session — a rekey shouldn't arrive; if it
-            // does, a full reconnect will pick up the new epoch/key.
-            return
-        }
-        for _ in 0 ..< 3 {
+    /// Converge this session on the Home's CURRENT key state (rekey handler and
+    /// the periodic backstop):
+    ///  - plaintext session, Home now activated → reconnect encrypted (E2EE-01:
+    ///    otherwise a connected camera keeps streaming plaintext for days);
+    ///  - encrypted session, Home turned off → reconnect plaintext;
+    ///  - encrypted session, key rotated → re-apply the new key live at index 0
+    ///    (no republish). `epoch` is server bookkeeping, never a key index (§3.2).
+    private func reconcileKeyState() async {
+        guard status == .streaming else { return }
+        let provider = keyProvider
+        for attempt in 0 ..< 5 {
             do {
                 let rt = try await backend.realtimeToken(homeId: paired.homeId, deviceSecret: paired.deviceSecret)
                 // A concurrent rekey (or a stop) already moved this session on.
-                guard keyProvider === provider else { return }
-                if (rt.keyEpoch ?? 0) == 0 {
+                guard status == .streaming, keyProvider === provider else { return }
+                let epoch = rt.keyEpoch ?? 0
+                guard let provider else {
+                    if epoch >= 1 {
+                        print("[Foresight Camera][E2EE] Home activated while streaming plaintext — reconnecting encrypted")
+                        await restart()
+                    }
+                    return
+                }
+                if epoch == 0 {
                     // Claim the switch before suspending so a concurrent rekey
                     // bails at the guard above instead of restarting again.
                     keyProvider = nil
-                    await stop()
-                    await start()
+                    await restart()
                     return
                 }
                 if let sealed = rt.sealedHomeKey {
@@ -277,7 +419,53 @@ final class RealtimeSession: NSObject, ObservableObject {
             } catch {
                 lastError = "Rekey failed: \(error.localizedDescription)"
             }
-            try? await Task.sleep(nanoseconds: 2_000_000_000)   // brief; server seals before broadcasting
+            // Our new sealed copy may land a moment after the rotation commits.
+            try? await Task.sleep(nanoseconds: UInt64(attempt + 1) * 2_000_000_000)
+        }
+    }
+
+    private func startEpochCheck() {
+        epochCheckTask?.cancel()
+        epochCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.epochCheckInterval)
+                guard let self, !Task.isCancelled else { return }
+                await self.reconcileKeyState()
+            }
+        }
+    }
+
+    private func stopEpochCheck() {
+        epochCheckTask?.cancel()
+        epochCheckTask = nil
+    }
+
+    // MARK: Thermal policy (REL-02)
+
+    /// Step the encode down while the phone is hot and restore it once it cools:
+    /// `.serious` caps at 1080p (drops 4K/Max), `.critical` drops to 480p. A
+    /// phone that throttles itself into a shutdown is a dead camera, and
+    /// sustained heat on a permanently-charging phone ages the battery.
+    private func applyThermalPolicy() async {
+        guard status == .streaming else { return }
+        let thermal = ProcessInfo.processInfo.thermalState
+        let cap: QualityPreset?
+        switch thermal {
+        case .critical: cap = .p480
+        case .serious: cap = (quality == .max || quality == .pure4k) ? .p1080 : nil
+        default: cap = nil
+        }
+        if let cap {
+            guard quality != cap else { return }
+            if qualityBeforeThermalStep == nil { qualityBeforeThermalStep = quality }
+            print("[Foresight Camera] thermal \(thermal.rawValue): stepping quality down to \(cap.rawValue)")
+            _ = await applyQuality(cap)
+            broadcastState()
+        } else if let restore = qualityBeforeThermalStep, thermal == .nominal || thermal == .fair {
+            qualityBeforeThermalStep = nil
+            print("[Foresight Camera] cooled down: restoring quality \(restore.rawValue)")
+            _ = await applyQuality(restore)
+            broadcastState()
         }
     }
 
@@ -299,9 +487,11 @@ final class RealtimeSession: NSObject, ObservableObject {
 
     /// Decode + apply a single inbound command, then ack.
     private func handle(command: CommandMessage, from sender: Participant?) async {
-        // Authorization: only obey commands targeted at us from a viewer peer.
+        // Authorization: only obey commands targeted at us from a VIEWER peer.
+        // Sender-less data (which only the server API can produce) and other
+        // cameras are refused — the role comes from server-signed metadata.
         guard command.target == paired.cameraId else { return }
-        if let sender, !isViewer(sender) { return }
+        guard let sender, isViewer(sender) else { return }
 
         var ok = true
         var ackError: String?
@@ -327,6 +517,8 @@ final class RealtimeSession: NSObject, ObservableObject {
 
         case .setQuality:
             if let q = command.args?.quality {
+                // An explicit choice replaces any thermal step-down memory.
+                qualityBeforeThermalStep = nil
                 switch await applyQuality(q) {
                 case .ok:
                     ok = true
@@ -644,7 +836,16 @@ extension RealtimeSession: RoomDelegate {
             case .reconnecting:
                 self.status = .reconnecting
             case .disconnected:
-                if case .streaming = self.status { self.status = .offline(nil) }
+                // A LIVE session dropped (the SDK gave up reconnecting, the
+                // server or LiveKit restarted, the network vanished). An
+                // intentional teardown set status to .idle first, so it never
+                // lands here. The supervisor brings the camera back.
+                if self.status == .streaming || self.status == .reconnecting {
+                    self.stopTelemetry()
+                    self.stopEpochCheck()
+                    self.previewTrack = nil
+                    self.scheduleRetry(reason: "Connection lost")
+                }
             case .connecting:
                 self.status = .connecting
             case .disconnecting:
@@ -675,7 +876,8 @@ extension RealtimeSession: RoomDelegate {
 
     nonisolated func room(_ room: Room, didDisconnectWithError error: LiveKitError?) {
         Task { @MainActor in
-            self.status = .offline(error?.localizedDescription)
+            // Retry scheduling happens in the .disconnected state transition
+            // above (it knows whether the drop was intentional); just record why.
             if let error { self.lastError = error.localizedDescription }
         }
     }
@@ -733,12 +935,17 @@ extension RealtimeSession: RoomDelegate {
             // The camera consumes only `command` (applied to the controller) and
             // `rekey` (live key rotation). ack/state/telemetry are outbound-only
             // for a camera and are ignored, exactly as before.
-            switch ForesightCodec.decode(data) {
+            // Decode validates shape + protocol version; the sender rule is
+            // shared with every other client (Foresight.isAuthorizedSender).
+            guard let message = ForesightCodec.decode(data),
+                  Foresight.isAuthorizedSender(message, senderIdentity: participant?.identity?.stringValue)
+            else { return }
+            switch message {
             case .command(let command):
                 await self.handle(command: command, from: participant)
             case .rekey(let rekey):
                 await self.handleRekey(rekey)
-            case .ack, .state, .telemetry, .none:
+            case .ack, .state, .telemetry:
                 break
             }
         }

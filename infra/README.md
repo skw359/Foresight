@@ -15,7 +15,10 @@ one option, never required.**
 ## Run
 
 `infra/livekit.yaml` holds the real API secret, so it is not committed. Create it
-from the template first: `cp infra/livekit.example.yaml infra/livekit.yaml`.
+from the template first: `cp infra/livekit.example.yaml infra/livekit.yaml`, and
+replace the placeholder secret with `openssl rand -hex 32` (use the same
+key/secret in `foresight-server/.env` and `foresight-recorder/.env`).
+`run-local.sh` refuses to start LiveKit on the template secret.
 
 ```bash
 # Linux / macOS
@@ -57,4 +60,5 @@ Two options, both configuration-only:
   Cloud project values.
 - **Self-hosted behind TLS**: keep this LiveKit and put a reverse proxy in front
   of the signaling socket — see [`TLS-SETUP.md`](./TLS-SETUP.md) for the nginx
-  and Caddy configs that ship here.
+  and Caddy configs that ship here (they forward only `/rtc…`, never LiveKit's
+  `/twirp` server API).

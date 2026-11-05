@@ -1,5 +1,5 @@
 /**
- * E2EE identity + key context (E2EE_MODEL_B_PLAN.md §7.2).
+ * E2EE identity + key context (shared/E2EE.md §7.2).
  *
  * Owns:
  *   - the unlocked user identity (X25519 sk/pk) — held in memory, and — ONLY

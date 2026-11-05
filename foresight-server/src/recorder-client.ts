@@ -10,6 +10,7 @@
  * When RECORDER_SHARED_SECRET is unset the calls are disabled entirely, so the
  * server boots cleanly in tests and recorder-less deployments.
  */
+import type { RecorderCameraState } from "@foresight/contract";
 import { config } from "./config.js";
 
 /** Minimal logger shape (Fastify's req.log satisfies this). */
@@ -85,4 +86,36 @@ export function revokeRecorder(homeId: string, log?: RecorderLogger): Promise<bo
  */
 export function rekeyRecorder(homeId: string, epoch: number, log?: RecorderLogger): Promise<boolean> {
   return call("/control/rekey", { homeId, epoch }, log);
+}
+
+/** The slice of the recorder's GET /status the server relies on. */
+export interface RecorderStatusBody {
+  homes?: Record<
+    string,
+    Array<{
+      cameraId: string;
+      state: RecorderCameraState;
+      lastSegmentAt?: number | null;
+      droppedFrames?: number;
+    }>
+  >;
+}
+
+/** Fetch the recorder's live status, or null when it is disabled/unreachable. */
+export async function recorderStatus(log?: RecorderLogger): Promise<RecorderStatusBody | null> {
+  if (!config.recorderSharedSecret) return null;
+  try {
+    const res = await fetch(`${config.recorderUrl}/status`, {
+      headers: { "x-recorder-secret": config.recorderSharedSecret },
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) {
+      log?.warn({ status: res.status }, "recorder status non-2xx");
+      return null;
+    }
+    return (await res.json()) as RecorderStatusBody;
+  } catch (err) {
+    log?.debug?.({ err: String(err) }, "recorder status unreachable");
+    return null;
+  }
 }

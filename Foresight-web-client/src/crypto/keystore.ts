@@ -1,6 +1,6 @@
 /**
  * Device key cache — the web analog of the iOS viewer's Face ID Keychain cache
- * (E2EE_MODEL_B_PLAN.md §7.4): lets a restored session (JWT already in
+ * (shared/E2EE.md §7.4): lets a restored session (JWT already in
  * localStorage) regain the unlocked identity WITHOUT re-prompting for the
  * password, so the login password is the only password the user ever types.
  * OPT-IN: nothing is persisted unless the user enables "Keep me unlocked on

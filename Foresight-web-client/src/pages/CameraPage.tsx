@@ -174,14 +174,16 @@ export function CameraPage() {
                 >
                   <Icon name="edit" size={15} />
                 </button>
-                <button
-                  className="btn ghost sm"
-                  onClick={() => setShowRemove(true)}
-                  title="Remove camera"
-                  style={{ padding: "6px 8px", color: "var(--danger)" }}
-                >
-                  <Icon name="trash" size={15} />
-                </button>
+                {home?.role === "owner" && (
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => setShowRemove(true)}
+                    title="Remove camera"
+                    style={{ padding: "6px 8px", color: "var(--danger)" }}
+                  >
+                    <Icon name="trash" size={15} />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -264,6 +266,9 @@ export function CameraPage() {
               // and the panel must not claim recording is off while unknown.
               recordingEnabled={camera.dto?.recordingEnabled}
               recordingGated={!!home && home.keyEpoch >= 1 && !home.recorderConsented}
+              // Deleting footage and turning recording OFF are owner-only.
+              canManage={home?.role === "owner"}
+              homeId={home?.id}
               onToast={showToast}
             />
           </div>

@@ -2038,3 +2038,9 @@ body.modal-open .app-shell {
   justify-content: flex-end;
   gap: 10px;
 }
+
+/* Recorder health warning in the recordings panel (encoder failing / recorder down). */
+.rec-health-bad {
+  color: var(--danger);
+  font-weight: 560;
+}
