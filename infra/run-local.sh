@@ -46,6 +46,16 @@ lan_ip() {
   printf '%s\n' "$ip"
 }
 
+if [ ! -f "$DIR/livekit.yaml" ]; then
+  echo "infra/livekit.yaml missing — create it: cp infra/livekit.example.yaml infra/livekit.yaml" >&2
+  echo "and replace the placeholder key secret with: openssl rand -hex 32" >&2
+  exit 1
+fi
+if grep -q "REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_32\|devkey: secret" "$DIR/livekit.yaml"; then
+  echo "infra/livekit.yaml still has a template API secret — replace it with: openssl rand -hex 32" >&2
+  exit 1
+fi
+
 IP="$(lan_ip || true)"
 echo "Point your iPhones / clients at:  ws://${IP:-<LAN-IP>}:7880"
 if [ -z "$IP" ]; then

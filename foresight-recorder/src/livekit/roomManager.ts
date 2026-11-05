@@ -13,7 +13,7 @@
  * pin the SFU forwards and demotes layers at will, and the recorder ends up
  * writing 240x135 footage for a phone that is publishing 1080p.
  *
- * ── E2EE (Model B, E2EE_MODEL_B_PLAN.md §8) ──
+ * ── E2EE (Model B, shared/E2EE.md §8) ──
  * The connect + key decision is driven by the KeyManager's per-Home state:
  *   epoch 0 / unknown  → plaintext home, connect exactly as today (no e2ee).
  *   epoch ≥ 1 + HMK    → connect with the locked encryption options (§3.2).

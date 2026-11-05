@@ -2,9 +2,14 @@
 # Foresight Security — install systemd *user* units for this box.
 #
 # Generates ~/.config/systemd/user/{livekit,foresight-server,foresight-recorder}
-# .service with absolute paths baked in, because a systemd unit does not read
-# your shell profile: an nvm- or fnm-managed `node` is invisible to it unless the
-# full path is written into ExecStart.
+# .service (plus a daily database-backup timer) with absolute paths baked in,
+# because a systemd unit does not read your shell profile: an nvm- or
+# fnm-managed `node` is invisible to it unless the full path is written into
+# ExecStart.
+#
+# foresight-server applies pending database migrations (`prisma migrate
+# deploy` — never `migrate dev`, which can offer to RESET the database) before
+# every start, so a `git pull` + restart can't run new code on an old schema.
 #
 #   ./infra/systemd/install-user-units.sh          # write units + enable
 #   ./infra/systemd/install-user-units.sh --no-enable
@@ -34,6 +39,17 @@ for f in foresight-server/dist/index.js foresight-recorder/dist/index.js; do
 done
 for f in foresight-server/.env foresight-recorder/.env; do
   [ -f "$REPO/$f" ] || die "$f missing — copy it from $f.example."
+done
+PRISMA_CLI="$REPO/node_modules/prisma/build/index.js"
+[ -f "$PRISMA_CLI" ] || die "prisma CLI missing — run 'npm install' at the repo root first."
+
+# Template secrets are refused by both services at boot; catch it here too, with
+# a clearer message than a crash loop in the journal.
+for f in foresight-server/.env foresight-recorder/.env infra/livekit.yaml; do
+  [ -f "$REPO/$f" ] || continue
+  if grep -qE '^(JWT_SECRET|LIVEKIT_API_SECRET|RECORDER_SHARED_SECRET)=(change-me.*|secret|)$|REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_32|devkey: secret' "$REPO/$f"; then
+    echo "warning: $f still contains an empty or template secret — generate one with: openssl rand -hex 32" >&2
+  fi
 done
 
 # The recorder refuses to start if this does not exist; create it now rather
@@ -133,6 +149,8 @@ Type=simple
 # package root, not the repo root.
 WorkingDirectory=$REPO/foresight-server
 $MOUNTGUARD
+# Apply pending migrations first (idempotent; never resets data).
+ExecStartPre=$NODE $PRISMA_CLI migrate deploy
 ExecStart=$NODE dist/index.js
 Restart=always
 RestartSec=3
@@ -164,6 +182,33 @@ WantedBy=default.target
 UNIT
 echo "wrote $UNIT_DIR/foresight-recorder.service"
 
+# Daily online backup of the SQLite database (accounts, Homes and every E2EE
+# key vault — losing it locks users out of their encrypted Homes). Backups land
+# in foresight-server/backups/ (or BACKUP_DIR from foresight-server/.env);
+# COPY THEM OFF THIS MACHINE as well.
+cat > "$UNIT_DIR/foresight-backup.service" <<UNIT
+[Unit]
+Description=Foresight Security database backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=$REPO/foresight-server
+ExecStart=$NODE scripts/backup-db.mjs
+UNIT
+cat > "$UNIT_DIR/foresight-backup.timer" <<UNIT
+[Unit]
+Description=Daily Foresight Security database backup
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
+UNIT
+echo "wrote $UNIT_DIR/foresight-backup.{service,timer}"
+
 systemctl --user daemon-reload
 
 if [ "$ENABLE" = "1" ]; then
@@ -171,8 +216,9 @@ if [ "$ENABLE" = "1" ]; then
   [ -n "$LIVEKIT" ] && UNITS="livekit.service $UNITS"
   # shellcheck disable=SC2086
   systemctl --user enable $UNITS
+  systemctl --user enable --now foresight-backup.timer
   echo
-  echo "Enabled: $UNITS"
+  echo "Enabled: $UNITS foresight-backup.timer"
   echo "Start them with:  systemctl --user start $UNITS"
 fi
 

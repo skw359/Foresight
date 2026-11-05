@@ -1,5 +1,5 @@
 /**
- * E2EE key-management API tests (E2EE_MODEL_B_PLAN.md M7). Uses the same
+ * E2EE key-management API tests (shared/E2EE.md M7). Uses the same
  * Fastify `inject()` + isolated temp SQLite bootstrap as api.test.ts, and also
  * imports the shared PrismaClient to set up edge cases (a camera with no pubkey)
  * and to assert row-level side effects (HomeKey cleanup, consent revoke).

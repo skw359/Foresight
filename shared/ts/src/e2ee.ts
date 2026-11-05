@@ -7,7 +7,7 @@
  *   - Foresight Security Camera Client/Sources/Protocol/ForesightProtocol.swift
  *   - Foresight/Foresight/Models/ForesightProtocol.swift
  *
- * ── The locked LiveKit key-application contract (E2EE_MODEL_B_PLAN.md §3.2) ──
+ * ── The locked LiveKit key-application contract (shared/E2EE.md §3.2) ──
  * A divergence on ANY of these values produces SILENT decryption failure
  * (black video, no error). Do not change any of them without changing every
  * platform in the same release and re-running the M0 parity vector.

@@ -1,5 +1,5 @@
 /**
- * M0 parity-gate vector generator (E2EE_MODEL_B_PLAN.md §11 M0).
+ * M0 parity-gate vector generator (shared/E2EE.md §11 M0).
  *
  * Emits shared/test-vectors/e2ee-parity.json — the cross-platform test vector
  * every codebase's parity test must reproduce byte-for-byte:
