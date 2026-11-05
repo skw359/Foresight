@@ -6,6 +6,8 @@
  */
 package com.foresight.viewer.network
 
+import com.foresight.viewer.support.CleartextPolicy
+
 import com.foresight.viewer.contract.AddMemberRequest
 import com.foresight.viewer.contract.ApiErrorBody
 import com.foresight.viewer.contract.AuthResponse
@@ -162,8 +164,11 @@ class ApiClient(
         bodySerializer: KSerializer<B>?,
         authed: Boolean,
     ): String = withContext(Dispatchers.IO) {
+        val base = baseUrlProvider().trimEnd('/')
+        // Passwords and session tokens never travel in cleartext beyond the LAN.
+        CleartextPolicy.violation(base)?.let { throw ApiException("insecure_server", it) }
         val builder = Request.Builder()
-            .url(baseUrlProvider().trimEnd('/') + path)
+            .url(base + path)
             .header("Accept", "application/json")
 
         if (authed) {

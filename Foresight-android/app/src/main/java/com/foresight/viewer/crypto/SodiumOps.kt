@@ -7,7 +7,7 @@
  * libsodium (not Conscrypt/Tink/BouncyCastle hand-rolls): nothing in the
  * platform can open a libsodium sealed box (crypto_box_seal / XSalsa20), and
  * cross-platform byte parity with web/iOS/recorder is load-bearing
- * (E2EE_MODEL_B_PLAN.md §3.1).
+ * (shared/E2EE.md §3.1).
  */
 package com.foresight.viewer.crypto
 

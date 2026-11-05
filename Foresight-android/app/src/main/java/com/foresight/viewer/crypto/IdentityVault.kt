@@ -7,7 +7,7 @@
  * Cross-platform parity is load-bearing: every primitive and parameter here
  * must match web (libsodium-wrappers-sumo), iOS/camera (swift-sodium) and the
  * recorder (sodium-native) byte-for-byte, or media silently fails to decrypt.
- * See E2EE_MODEL_B_PLAN.md §3 and shared/test-vectors/e2ee-parity.json
+ * See shared/E2EE.md §3 and shared/test-vectors/e2ee-parity.json
  * (asserted by E2EEParityTest).
  *
  * KDF work (~100–300 ms native Argon2id at opslimit 3 / 64 MiB) runs on

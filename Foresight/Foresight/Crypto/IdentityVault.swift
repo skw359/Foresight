@@ -10,7 +10,7 @@
 //  Cross-platform parity is load-bearing: every primitive and parameter here
 //  must match the web (libsodium-wrappers-sumo), camera (swift-sodium) and
 //  recorder (sodium-native) implementations byte-for-byte, or media silently
-//  fails to decrypt. See E2EE_MODEL_B_PLAN.md §3 and the frozen parity vector at
+//  fails to decrypt. See shared/E2EE.md §3 and the frozen parity vector at
 //  shared/test-vectors/e2ee-parity.json (asserted by E2EEParityTests).
 //
 //  libsodium (not CryptoKit): CryptoKit cannot open a libsodium sealed box

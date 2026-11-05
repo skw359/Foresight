@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foresight network security policy.
+
+  Cleartext (http:// / ws://) is permitted at the platform level ONLY because
+  the documented home setup reaches the server by a LAN IP address
+  (http://192.168.1.20:3199), and this XML can't express IP RANGES. The real
+  rule is enforced in code by support/CleartextPolicy.kt: cleartext is refused
+  for anything that is not a private/LAN address (RFC 1918, loopback,
+  link-local, CGNAT/Tailscale, *.local / *.lan / *.home.arpa). Anything reached
+  over the internet must use https:// and wss://.
+
+  Only system CAs are trusted (no user-installed CAs).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

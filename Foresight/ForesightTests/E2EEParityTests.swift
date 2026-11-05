@@ -2,7 +2,7 @@
 //  E2EEParityTests.swift
 //  ForesightTests
 //
-//  M0 cross-platform E2EE parity gate (E2EE_MODEL_B_PLAN.md §11). Proves that
+//  M0 cross-platform E2EE parity gate (shared/E2EE.md §11). Proves that
 //  swift-sodium on iOS derives the SAME vault key, opens the SAME private key,
 //  and unseals the SAME Home Media Key as the web (libsodium-wrappers-sumo) and
 //  recorder (sodium-native) builds — and that the HMK is applied to LiveKit as

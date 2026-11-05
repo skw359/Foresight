@@ -3,7 +3,7 @@
  *
  * Hand-kept in sync with shared/ts/src/e2ee.ts (THE canonical source of truth).
  *
- * ── The locked LiveKit key-application contract (E2EE_MODEL_B_PLAN.md §3.2) ──
+ * ── The locked LiveKit key-application contract (shared/E2EE.md §3.2) ──
  * A divergence on ANY value below produces SILENT decryption failure (black
  * video, no error):
  *   1. Key application: setSharedKey(base64(HMK)) as a STRING (LiveKit's PBKDF2
