@@ -78,7 +78,10 @@ export function AddMemberModal({
     setKeyNote(null);
     try {
       const who = identifier.trim();
-      const home = await addMember(homeId, { identifier: who, role });
+      // Only send a role when the owner explicitly chose to make someone an
+      // owner. "member" is the server's default for NEW members, and omitting
+      // it means re-adding an existing owner can never silently demote them.
+      const home = await addMember(homeId, role === "owner" ? { identifier: who, role } : { identifier: who });
       setAdded(who);
       setIdentifier("");
       onAdded?.(home);

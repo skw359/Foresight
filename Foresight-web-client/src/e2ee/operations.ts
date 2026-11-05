@@ -1,5 +1,5 @@
 /**
- * High-level E2EE key-lifecycle operations (E2EE_MODEL_B_PLAN.md §6).
+ * High-level E2EE key-lifecycle operations (shared/E2EE.md §6).
  *
  * "Seal" = crypto_box_seal(HMK → holder pubkey). Every seal here is TOFU-pinned
  * (§10.5): a holder whose pinned key CHANGED is refused and reported as a
@@ -21,10 +21,10 @@ import type {
 
 import {
   deleteHolderKey,
+  getKeyHolders,
   getPendingKeyHolders,
   getRecorderIdentity,
   initHomeKey,
-  listHomeMembers,
   rotateHomeKey,
   setRecorderConsent,
   submitSealedKeys,
@@ -194,74 +194,61 @@ export async function reissueKey(
 /* ----------------------------------------------------------------- rotation */
 
 /**
- * Enumerate the holder pubkeys known BEFORE the epoch bumps: members from
- * listHomeMembers (reliable pubkeys) plus whatever /key/pending surfaces.
- * Holders that HOLD a current-epoch key (cameras, the consented recorder) are
- * by definition absent from pending here — rotateHome covers them with an
- * immediate post-rotate backfill at the new epoch, where they reappear as
- * non-firstContact pending holders.
+ * Every holder the new epoch must be sealed to, fetched BEFORE the epoch bumps:
+ * members and cameras with pubkeys, plus the recorder while its consent is in
+ * force (GET /key/holders, owner only). Sealing to all of them in the rotate
+ * request itself matters: the server broadcasts `rekey` the moment the
+ * rotation commits, so a camera whose copy was only backfilled afterwards
+ * would re-fetch too early and keep encrypting with the old key — and a
+ * recorder without its copy would stop recording.
  */
 async function enumerateHolders(homeId: string): Promise<SealTarget[]> {
-  const [members, pendingResp] = await Promise.all([
-    listHomeMembers(homeId),
-    getPendingKeyHolders(homeId),
-  ]);
-  const byKey = new Map<string, SealTarget>();
-  const add = (t: SealTarget) => byKey.set(`${t.holderType}:${t.holderId}`, t);
-
-  for (const m of members) {
-    if (m.publicKey) {
-      add({ holderType: "user", holderId: m.userId, publicKey: m.publicKey, label: m.identifier });
-    }
-  }
-  for (const h of pendingResp.pending) {
-    if (h.holderType !== "user") add(toTarget(h));
-    else if (!byKey.has(`user:${h.holderId}`)) add(toTarget(h));
-  }
-  return [...byKey.values()];
+  const { pending } = await getKeyHolders(homeId);
+  return pending.map(toTarget);
 }
 
 /**
- * Rotate the HMK: fresh key sealed to all remaining holders (§6), POST
- * /key/rotate {fromEpoch}, then an immediate backfill at the new epoch. Handles
- * a 409 (concurrent rotate) by refetch+retry-once. Returns the new epoch + HMK
- * base64; the caller broadcasts rekey + re-setKeys locally.
+ * Rotate the HMK: fresh key sealed to ALL remaining holders (§6) in one POST
+ * /key/rotate {fromEpoch}, then a backfill sweep at the new epoch as a safety
+ * net (a holder that appeared concurrently). A 409 stale_epoch (concurrent
+ * rotate) is retried once against the fresh epoch and holder list. Returns
+ * the new epoch + HMK base64; the caller re-setKeys locally (the server has
+ * already told the room).
  */
 export async function rotateHome(
   homeId: string,
   fromEpoch: number,
 ): Promise<{ epoch: number; hmkBase64: string; conflicts: PinConflict[]; newPins: string[] }> {
   const hmk = await generateHmk();
-  const targets = await enumerateHolders(homeId);
-  const { uploads, conflicts, newPins } = await sealTo(homeId, hmk.base64, targets);
 
-  // Cameras and the consented recorder held a current-epoch key, so they were
-  // NOT pending pre-rotate and the uploads above cannot include them. Once the
-  // epoch advances they surface as non-firstContact pending holders — backfill
-  // them right away so a rotation never strands a device beyond the accepted
-  // sub-second blip (§6 "seals HMK′ to all remaining holders").
-  const finish = async (epoch: number) => {
-    const backfill = await reconcileBackfill(homeId, hmk.base64, epoch);
-    return {
-      epoch,
-      hmkBase64: hmk.base64,
-      conflicts: [...conflicts, ...backfill.conflicts],
-      newPins: [...newPins, ...backfill.newPins],
-    };
+  const attempt = async (epoch: number) => {
+    const targets = await enumerateHolders(homeId);
+    const sealed = await sealTo(homeId, hmk.base64, targets);
+    const res = await rotateHomeKey(homeId, { fromEpoch: epoch, keys: sealed.uploads });
+    return { res, sealed };
   };
 
+  let result;
   try {
-    const res = await rotateHomeKey(homeId, { fromEpoch, keys: uploads });
-    return await finish(res.keyEpoch);
+    result = await attempt(fromEpoch);
   } catch (err) {
-    if (isConflict(err)) {
-      // Someone else rotated first — re-read the epoch and retry once.
-      const { epoch } = await getPendingKeyHolders(homeId);
-      const retry = await rotateHomeKey(homeId, { fromEpoch: epoch, keys: uploads });
-      return await finish(retry.keyEpoch);
-    }
-    throw err;
+    if (!isConflict(err) || conflictReason(err) !== "stale_epoch") throw err;
+    // Someone else rotated first — re-read the epoch and retry once.
+    const fresh = (err as { details?: { keyEpoch?: number } }).details?.keyEpoch;
+    const epoch = typeof fresh === "number" ? fresh : (await getPendingKeyHolders(homeId)).epoch;
+    result = await attempt(epoch);
   }
+
+  const epoch = result.res.keyEpoch;
+  const backfill = await reconcileBackfill(homeId, hmk.base64, epoch).catch(
+    (): SealResult => ({ sealed: 0, conflicts: [], newPins: [] }),
+  );
+  return {
+    epoch,
+    hmkBase64: hmk.base64,
+    conflicts: [...result.sealed.conflicts, ...backfill.conflicts],
+    newPins: [...result.sealed.newPins, ...backfill.newPins],
+  };
 }
 
 /* ------------------------------------------------------------- recorder consent */
@@ -298,4 +285,8 @@ export async function fetchRecorderIdentity(): Promise<string | null> {
 
 function isConflict(err: unknown): boolean {
   return typeof err === "object" && err !== null && "status" in err && (err as { status: number }).status === 409;
+}
+
+function conflictReason(err: unknown): string | undefined {
+  return (err as { details?: { reason?: string } }).details?.reason;
 }

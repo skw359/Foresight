@@ -150,10 +150,11 @@ export interface SealedKey {
  *   GET  /me/keys                     → MeKeysResponse
  *   GET  /homes/:homeId/key           → HomeKeyResponse   (caller's own sealed copy)
  *   GET  /homes/:homeId/key/pending   → PendingKeyHoldersResponse
+ *   GET  /homes/:homeId/key/holders   → PendingKeyHoldersResponse (owner; EVERY holder the next epoch must be sealed to — members/cameras with pubkeys + the recorder while consented)
  *   POST /homes/:homeId/key           body: SubmitSealedKeysRequest  → 204 (idempotent; §10.5 authority — first-contact user/recorder seals are owner-only, 403 otherwise)
  *   DELETE /homes/:homeId/key/:holderType/:holderId → 204 (owner; drops the holder's CURRENT-epoch sealed copy so it returns to pending — repair path for a poisoned/undecryptable copy)
  *   POST /homes/:homeId/key/init      body: InitHomeKeyRequest       → HomeKeyEpochResponse (owner; 409 until every camera has a pubkey)
- *   POST /homes/:homeId/key/rotate    body: RotateHomeKeyRequest     → HomeKeyEpochResponse (owner; 409 on stale fromEpoch)
+ *   POST /homes/:homeId/key/rotate    body: RotateHomeKeyRequest     → HomeKeyEpochResponse (owner; 409 stale_epoch on stale fromEpoch; 409 recorder_key_required when consent is in force but the recorder's copy is missing; the server broadcasts `rekey`)
  *   POST /homes/:homeId/key/disable   → HomeKeyEpochResponse (owner; turns E2EE off — keyEpoch → 0, every sealed copy dropped, `rekey` epoch 0 broadcast; 409 when not activated)
  *   POST /homes/:homeId/recorder-consent body: RecorderConsentRequest → RecorderConsentResponse (owner)
  *   GET  /e2ee/recorder-identity      → RecorderIdentityResponse

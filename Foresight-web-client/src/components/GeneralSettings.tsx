@@ -8,24 +8,32 @@
  *
  *   • Appearance    — light/dark (client-only, applied instantly and persisted
  *                     on the device via ThemeProvider).
- *   • Pairing       — the server URL embedded into QR pairing tickets. Must be
+ *   • Server        — the pairing URL embedded into QR pairing tickets (must be
  *                     reachable by the phones being paired, so on a LAN it has
  *                     to be this machine's IP, not "localhost"; blank clears
- *                     the override and lets the server auto-detect.
+ *                     the override and lets the server auto-detect) and whether
+ *                     new accounts may register. SERVER-WIDE, so only the
+ *                     server administrator can change them; everyone else
+ *                     sees them read-only.
  *   • Camera unlock — whether this device stores the user's camera encryption
  *                     keys so feeds open without re-entering the password
  *                     after a reload.
- *   • Account       — first name (used for the Homes-page greeting) and the
- *                     delete-account danger zone.
+ *   • Account       — first name (used for the Homes-page greeting), password
+ *                     change (re-wraps the E2EE vault), sign out everywhere,
+ *                     and the delete-account danger zone.
  */
 import { useEffect, useState, type FormEvent } from "react";
 
 import {
   ApiRequestError,
+  changePassword,
+  getMyKeys,
   getServerSettings,
+  logoutEverywhere,
   updateProfile,
   updateServerSettings,
 } from "../api/client";
+import { rewrapVault } from "../crypto/identity";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { useE2EE } from "../e2ee/E2EEContext";
@@ -49,6 +57,20 @@ export function GeneralSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Server-wide policy (admin only).
+  const [editable, setEditable] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [registrationLocked, setRegistrationLocked] = useState(false);
+
+  // Password change.
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwDone, setPwDone] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [signOutDone, setSignOutDone] = useState(false);
 
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
@@ -59,6 +81,9 @@ export function GeneralSettings() {
         const s = await getServerSettings(ctrl.signal);
         setUrl(s.pairingServerUrl ?? "");
         setDetected(s.detectedServerUrl);
+        setEditable(s.editable === true);
+        setRegistrationOpen(s.registrationOpen === true);
+        setRegistrationLocked(s.registrationLocked === true);
       } catch (err) {
         if (ctrl.signal.aborted) return;
         setError(
@@ -81,9 +106,11 @@ export function GeneralSettings() {
       const trimmed = url.trim();
       const s = await updateServerSettings({
         pairingServerUrl: trimmed === "" ? null : trimmed,
+        ...(registrationLocked ? {} : { registrationOpen }),
       });
       setUrl(s.pairingServerUrl ?? "");
       setDetected(s.detectedServerUrl);
+      setRegistrationOpen(s.registrationOpen === true);
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
     } catch (err) {
@@ -92,6 +119,59 @@ export function GeneralSettings() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitPassword(e: FormEvent) {
+    e.preventDefault();
+    if (pwBusy) return;
+    setPwError(null);
+    setPwDone(false);
+    if (!pwNew) {
+      setPwError("Enter a new password.");
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError("The new passwords don't match.");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      // The E2EE vault is wrapped under the login password: re-wrap the SAME
+      // key under the new password so encrypted Homes keep working.
+      const { keyVault } = await getMyKeys();
+      let rewrapped = undefined;
+      if (keyVault) {
+        try {
+          rewrapped = await rewrapVault(pwCurrent, pwNew, keyVault);
+        } catch {
+          setPwError("Current password is incorrect.");
+          return;
+        }
+      }
+      await changePassword({ currentPassword: pwCurrent, newPassword: pwNew, keyVault: rewrapped });
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      setPwDone(true);
+    } catch (err) {
+      setPwError(err instanceof ApiRequestError ? err.message : "Could not change your password.");
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function signOutEverywhere() {
+    if (signOutBusy) return;
+    setSignOutBusy(true);
+    setSignOutDone(false);
+    try {
+      await logoutEverywhere();
+      setSignOutDone(true);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not sign out other devices.");
+    } finally {
+      setSignOutBusy(false);
     }
   }
 
@@ -154,6 +234,12 @@ export function GeneralSettings() {
         </div>
       ) : (
         <form onSubmit={save}>
+          {!editable && (
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+              Server settings apply to every Home on this server, so only the server
+              administrator can change them.
+            </p>
+          )}
           <div className="field">
             <label htmlFor="pairing-url">Pairing server URL</label>
             <input
@@ -162,7 +248,7 @@ export function GeneralSettings() {
               placeholder={detected || "http://192.168.1.20:3199"}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              disabled={busy}
+              disabled={busy || !editable}
             />
             <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
               The address phones use to reach this server when scanning a QR
@@ -175,11 +261,32 @@ export function GeneralSettings() {
               <code>{effective || "—"}</code>.
             </p>
           </div>
-          <div className="btn-row">
-            <button type="submit" className="btn primary" disabled={busy}>
-              {busy ? <span className="spinner" /> : saved ? "Saved!" : "Save"}
-            </button>
+          <div className="field">
+            <span>New accounts</span>
+            <label className="ctrl-toggle-row" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={registrationOpen}
+                onChange={(e) => setRegistrationOpen(e.target.checked)}
+                disabled={busy || !editable || registrationLocked}
+              />
+              <span className="ctrl-toggle-text">
+                Allow new accounts to register
+                <span className="ctrl-toggle-caption">
+                  {registrationLocked
+                    ? "Pinned by ALLOW_REGISTRATION in the server's environment."
+                    : "Turn on while someone you're adding creates their account, then turn it off again. Anyone who can reach this server can sign up while it's on."}
+                </span>
+              </span>
+            </label>
           </div>
+          {editable && (
+            <div className="btn-row">
+              <button type="submit" className="btn primary" disabled={busy}>
+                {busy ? <span className="spinner" /> : saved ? "Saved!" : "Save"}
+              </button>
+            </div>
+          )}
         </form>
       )}
 
@@ -238,6 +345,60 @@ export function GeneralSettings() {
                 ) : (
                   "Save name"
                 )}
+              </button>
+            </div>
+          </form>
+
+          <form onSubmit={submitPassword}>
+            <div className="field" style={{ marginTop: 22 }}>
+              <span>Password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Current password"
+                aria-label="Current password"
+                value={pwCurrent}
+                onChange={(e) => setPwCurrent(e.target.value)}
+                disabled={pwBusy}
+                style={{ marginTop: 8 }}
+              />
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="New password"
+                aria-label="New password"
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                disabled={pwBusy}
+                style={{ marginTop: 8 }}
+              />
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="Confirm new password"
+                aria-label="Confirm new password"
+                value={pwConfirm}
+                onChange={(e) => setPwConfirm(e.target.value)}
+                disabled={pwBusy}
+                style={{ marginTop: 8 }}
+              />
+              {pwError && (
+                <p className="error-box" style={{ marginTop: 8 }}>
+                  {pwError}
+                </p>
+              )}
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+                {pwDone
+                  ? "Password changed. Your other devices have been signed out."
+                  : "Changing your password signs out your other devices and re-protects your camera encryption keys with the new password."}
+              </p>
+            </div>
+            <div className="btn-row">
+              <button type="submit" className="btn primary" disabled={pwBusy || !pwCurrent}>
+                {pwBusy ? <span className="spinner" /> : "Change password"}
+              </button>
+              <button type="button" className="btn" onClick={() => void signOutEverywhere()} disabled={signOutBusy}>
+                {signOutBusy ? <span className="spinner" /> : signOutDone ? "Signed out elsewhere" : "Sign out other devices"}
               </button>
             </div>
           </form>

@@ -5,12 +5,13 @@
  * it straight to disk as MP4 (Download).
  */
 import { useCallback, useEffect, useState } from "react";
-import type { RecordingCoverage, RecordingSpan } from "@foresight/contract";
+import type { RecorderCameraState, RecordingCoverage, RecordingSpan } from "@foresight/contract";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import { RecordingPlayerModal } from "./RecordingPlayerModal";
 import { epoch, fmtBytes, fmtDay, fmtDuration, fmtRange } from "./recordings";
 import {
+  getRecordingHealth,
   deleteRecordingSpan,
   downloadClip,
   getRecordingCoverage,
@@ -46,10 +47,30 @@ interface Props {
    * (§6, §8.3). The owner enables recorder consent in the Security modal.
    */
   recordingGated?: boolean;
+  /** Owner: may delete footage and turn recording off (members may only turn it on). */
+  canManage?: boolean;
+  /** The camera's Home — used to poll the recorder's health for this camera. */
+  homeId?: string;
   onToast?: (msg: string, error?: boolean) => void;
 }
 
-export function RecordingsPanel({ cameraId, recordingEnabled, recordingGated = false, onToast }: Props) {
+/** Human text for recorder states that mean "recording is NOT healthy". */
+const UNHEALTHY: Partial<Record<RecorderCameraState, string>> = {
+  encoder_failing: "The recorder's encoder is failing — footage is not being saved. Check the recorder logs.",
+  stalled: "No video is reaching the recorder right now.",
+  reacquiring: "Waiting for the camera's video to come back…",
+  awaiting_consent: "The recorder can't decrypt this Home yet (recorder consent).",
+};
+
+export function RecordingsPanel({
+  cameraId,
+  recordingEnabled,
+  recordingGated = false,
+  canManage = false,
+  homeId,
+  onToast,
+}: Props) {
+  const [recorderState, setRecorderState] = useState<RecorderCameraState | null | "unreachable">(null);
   // undefined = not yet known (parent DTO and coverage both still pending).
   const [enabled, setEnabled] = useState<boolean | undefined>(recordingEnabled);
   const [toggling, setToggling] = useState(false);
@@ -99,6 +120,33 @@ export function RecordingsPanel({ cameraId, recordingEnabled, recordingGated = f
     void refreshCoverage(ac.signal);
     return () => ac.abort();
   }, [refreshCoverage]);
+
+  // Recorder health (is 24/7 recording actually writing segments?), polled
+  // while recording is on.
+  useEffect(() => {
+    if (!homeId || !enabled) {
+      setRecorderState(null);
+      return;
+    }
+    let stop = false;
+    const poll = async () => {
+      try {
+        const h = await getRecordingHealth(homeId);
+        if (stop) return;
+        setRecorderState(
+          h.recorderReachable ? (h.cameras.find((c) => c.cameraId === cameraId)?.state ?? null) : "unreachable",
+        );
+      } catch {
+        /* transient — keep the last state */
+      }
+    };
+    void poll();
+    const t = setInterval(() => void poll(), 30_000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [homeId, cameraId, enabled]);
 
   const toggleRecording = useCallback(async () => {
     if (enabled === undefined) return; // state unknown — button is disabled
@@ -166,14 +214,21 @@ export function RecordingsPanel({ cameraId, recordingEnabled, recordingGated = f
         <button
           className={`btn sm ${enabled ? "danger" : ""}`}
           onClick={toggleRecording}
-          disabled={toggling || enabled === undefined || (recordingGated && enabled === false)}
+          disabled={
+            toggling ||
+            enabled === undefined ||
+            (recordingGated && enabled === false) ||
+            (enabled === true && !canManage)
+          }
           title={
             enabled === undefined
               ? "Checking recording status…"
               : recordingGated && !enabled
                 ? "Enable recorder consent in Security to record encrypted cameras"
                 : enabled
-                  ? "Stop 24/7 recording"
+                  ? canManage
+                    ? "Stop 24/7 recording"
+                    : "Only a Home owner can turn recording off"
                   : "Record this camera 24/7"
           }
         >
@@ -181,6 +236,16 @@ export function RecordingsPanel({ cameraId, recordingEnabled, recordingGated = f
           {enabled === undefined ? "Checking…" : enabled ? "Recording 24/7" : "Record 24/7"}
         </button>
       </div>
+      {enabled && recorderState && recorderState !== "recording" && (recorderState === "unreachable" || UNHEALTHY[recorderState]) && (
+        <div className="rec-coverage">
+          <span className={recorderState === "encoder_failing" || recorderState === "unreachable" ? "rec-health-bad" : "muted"}>
+            <Icon name="shieldAlert" size={13} />{" "}
+            {recorderState === "unreachable"
+              ? "The recorder isn't reachable — 24/7 recording may not be running."
+              : UNHEALTHY[recorderState]}
+          </span>
+        </div>
+      )}
       {recordingGated && enabled === false && (
         <div className="rec-coverage">
           <span className="muted">
@@ -257,19 +322,21 @@ export function RecordingsPanel({ cameraId, recordingEnabled, recordingGated = f
                   )}
                   Download
                 </button>
-                <button
-                  className="btn ghost sm rec-delete-btn"
-                  onClick={() => setConfirmSpan(span)}
-                  disabled={deleting === span.start}
-                  title="Delete this recording"
-                  aria-label="Delete this recording"
-                >
-                  {deleting === span.start ? (
-                    <span className="spinner" />
-                  ) : (
-                    <Icon name="trash" size={15} />
-                  )}
-                </button>
+                {canManage && (
+                  <button
+                    className="btn ghost sm rec-delete-btn"
+                    onClick={() => setConfirmSpan(span)}
+                    disabled={deleting === span.start}
+                    title="Delete this recording"
+                    aria-label="Delete this recording"
+                  >
+                    {deleting === span.start ? (
+                      <span className="spinner" />
+                    ) : (
+                      <Icon name="trash" size={15} />
+                    )}
+                  </button>
+                )}
               </div>
             </li>
           ))}
